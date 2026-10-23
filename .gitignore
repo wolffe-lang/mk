@@ -1,4 +1,33 @@
-prompts/
-mk.dSYM/
+# Build artifacts
 mk
+mk.dSYM/
+mk_test
+mk_test.dSYM/
 .lu-cache/
+
+# What the corpus Makefiles write. test.sh works in temporary copies, so these
+# appear only when mk or make is run inside tests/corpus by hand.
+tests/corpus/auto/a
+tests/corpus/auto/b
+tests/corpus/auto/c
+tests/corpus/auto/d
+tests/corpus/continuation/a.txt
+tests/corpus/continuation/b.txt
+tests/corpus/continuation/c.txt
+tests/corpus/cycle/a
+tests/corpus/cycle/b
+tests/corpus/diamond/base
+tests/corpus/diamond/left
+tests/corpus/diamond/right
+tests/corpus/fail/other
+tests/corpus/fail/result
+tests/corpus/ignore/result
+tests/corpus/leaf/out1.txt
+tests/corpus/leaf/out2.txt
+tests/corpus/linear/a
+tests/corpus/linear/b
+tests/corpus/linear/c
+tests/corpus/missing/result
+tests/corpus/phony/prog
+tests/corpus/vars/vars.out
+tests/corpus/wide/t[0-9][0-9]
