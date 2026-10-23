@@ -76,6 +76,15 @@ U1 $dir
 U2 $dir -j 2
 D1 $dir -n -j 2"
 done
+MATRIX="$MATRIX
+K1 fail -k -j 2
+K1 missing -k
+K1 missing -k -j 2
+S1 ignore -s
+S1 ignore -s -j 2
+V1 vars A=override
+V1 vars A=override -j 2
+RJ refuse"
 
 # Count expected rows (trim leading newline first)
 EXPECTED=$(echo "$MATRIX" | tail -n +2 | wc -l)
@@ -137,6 +146,7 @@ run_test() {
         J2) test_j2 "$copy" "$dir" ;;
         R1) test_r1 "$copy" "$dir" ;;
         P1) test_p1 "$copy" "$dir" ;;
+        RJ) test_rj "$copy" "$dir" ;;
     esac
 
     # Clean up the copy
@@ -375,6 +385,28 @@ test_r1() {
     fi
 }
 
+# RJ: every refused construct answers the same under -j 2: mk -j 2 -f X.mk prints what
+# mk -f X.mk prints, and both exit 2
+test_rj() {
+    local copy="$1" dir="$2"
+    local pass_all=true
+    for mkfile in "$copy"/*.mk; do
+        local one two st1=0 st2=0
+        one=$("$MK" -f "$mkfile" 2>&1 </dev/null) || st1=$?
+        two=$("$MK" -j 2 -f "$mkfile" 2>&1 </dev/null) || st2=$?
+        if [ "$one" != "$two" ] || [ "$st1" -ne 2 ] || [ "$st2" -ne 2 ]; then
+            pass_all=false
+        fi
+    done
+    if $pass_all; then
+        echo "ok RJ $dir"
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: RJ $dir"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 # P1: mk -p on vars matches the golden file
 test_p1() {
     local copy="$1" dir="$2"
@@ -436,7 +468,7 @@ MATRIX_FILE=$(mktemp)
 echo "$MATRIX" > "$MATRIX_FILE"
 while read -r row dir args; do
     case "$row" in
-        J3 | U1 | U2 | D1) same_as_make "$row" "$dir" $args ;;
+        J3 | U1 | U2 | D1 | K1 | S1 | V1) same_as_make "$row" "$dir" $args ;;
         *) run_test "$row" "$dir" ;;
     esac
 done < "$MATRIX_FILE"
