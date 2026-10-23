@@ -11,6 +11,10 @@ conditionals, `define`, `override`/`export`, and the variables GNU make sets its
 Every expected answer below was pasted from `gmake` 4.4.1. Where a prompt says "paste from gmake", run the
 command and copy the bytes; never type a message from memory.
 
+**On commits:** the commit names below are the shape to aim for while the work is ahead of you. Once edits
+exist, never undo, stash, revert or re-type them to split them into those groups. If the changes interleave,
+commit them as one batch whose message lists what it holds, say so in the verify, and move on (campaign rule 5).
+
 ### P1.1 — the expander
 
 `expand` in `vars.lu` stops a `$(…)` at the first `)`, so `$(A$(B))` and `$(foo bar)` break. Rewrite it as

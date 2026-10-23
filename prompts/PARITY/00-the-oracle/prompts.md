@@ -6,6 +6,10 @@ Do `prompts/PARITY/campaign.md`'s "Start of every session" first. Where the code
 94 rows against `/usr/bin/make` (3.81). This track changes no feature: it moves the oracle to `gmake` 4.4.1,
 makes `mk`'s messages 4.4.1's byte for byte, and gives later tracks a way to add rows by adding files.
 
+**On commits:** the commit names below are the shape to aim for while the work is ahead of you. Once edits
+exist, never undo, stash, revert or re-type them to split them into those groups. If the changes interleave,
+commit them as one batch whose message lists what it holds, say so in the verify, and move on (campaign rule 5).
+
 ### P0.1 — the oracle is gmake 4.4.1
 
 1. In `test.sh`, `MAKE="make"` becomes `MAKE="${MAKE:-gmake}"`, and the pre-flight checks the version:
