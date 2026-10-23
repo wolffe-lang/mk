@@ -6,7 +6,12 @@
 A `make` for the plain Makefile subset — targets, prerequisites, recipes, variables,
 automatic variables, mtime-driven rebuilds, `-n`, `-k`, and `-j N` — refusing everything
 else by name. If your Makefile has no pattern rules, no `include`, no `ifeq`, no functions,
-`mk` builds it identically to GNU make.
+`mk` builds it identically to GNU make. `test.sh` compares `mk` against GNU make 3.81:
+- on 12 corpus directories: the first and the second run, serially and with `-j 2`, and `-n -j 2`;
+- on their own directories: `-k`, `-s` and a command-line variable;
+- each comparing the output, the exit status and the files written.
+
+The refusals and usage errors are checked by name.
 
 ## Install
 
@@ -19,18 +24,20 @@ Requires wolf (https://wolf-lang.org) and a POSIX shell.
 ## Usage
 
 ```
-mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]...
-mk --help
-```
+Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]...
+       mk --help
+       mk --version
 
-- `-f FILE` — read FILE as the Makefile (default: `Makefile`)
-- `-C DIR` — change to DIR before doing anything
-- `-n` — print recipes without running them
-- `-s` — silent mode (do not print recipes)
-- `-k` — keep going after a failure
-- `-j N` — allow up to N jobs simultaneously
-- `-p` — print the parsed database (variables sorted, rules in file order)
-- `NAME=VALUE` — set a variable from the command line
+  -p         print the parsed database (variables sorted, rules in file order)
+  -n         print recipes without running them
+  -s         silent mode (do not print recipes)
+  -k         keep going after a failure
+  -j [N]     allow up to N jobs at once; no N: no limit
+  -f FILE    read FILE as the Makefile
+  -C DIR     change to DIR before doing anything
+  --version  print the version and exit
+  NAME=VALUE set a variable from the command line
+```
 
 ## The subset
 
@@ -76,7 +83,7 @@ A target is out of date when:
 4. The target is `.PHONY`
 
 A prerequisite with no rule that does not exist is an error:
-`mk: *** No rule to make target 'x', needed by 'y'.  Stop.`
+``mk: *** No rule to make target `missing_file', needed by `result'.  Stop.``
 
 ## `-j` and `-k` semantics
 
@@ -95,13 +102,20 @@ A prerequisite with no rule that does not exist is an error:
 ```
 wolf build main.lu -o mk
 wolf test .              # 42 unit tests
-./test.sh                # 36 corpus rows against GNU make
+./test.sh                # 94 corpus rows against GNU make
 wolf fmt --check *.lu
 ```
 
 `test.sh` runs each corpus directory in a fresh `mktemp -d` copy, comparing `mk` against
 GNU `make` on the same Makefile. A row passes when the two tools agree on the observable
 behaviour (output, exit code, or file system state). The oracle is GNU make beside it.
+
+The 94 rows cover 12 directories across 10 test kinds: N1 (dry-run output), B1 (files
+after build), B2 (second run), B3 (build from a subset), F1 (failure with `-k`), M1
+(missing target), C1 (cycle), J1 (wide build), J2 (diamond with `-j`), R1 (refusals),
+P1 (print database), J3 (parallel), U1/U2 (second-run comparison), D1 (dry-run with
+`-j`), K1 (keep-going), S1 (silent), V1 (command-line variables), RJ (refusals under
+`-j`), and E1 (usage errors).
 
 ## Measured numbers
 
@@ -121,9 +135,10 @@ Machine: Apple M5 Pro, macOS, wolf 0.1.0. Date: 2026-10-23.
 | `graph.lu` | Dependency graph, DFS, cycle detection, out-of-date decision |
 | `run.lu` | Scheduler: serial and parallel execution, `-n`/`-s`/`-k` |
 | `mk_test.lu` | Unit tests for the parser and variable flavours |
-| `test.sh` | Corpus tests against GNU make (36 rows) |
+| `test.sh` | Corpus tests against GNU make (94 rows) |
 | `SPEC.md` | The original specification (the prompt that built this) |
-| `REVIEW.md` | Cross-file review notes |
 | `CHANGELOG.md` | Version history |
-| `LICENSE` | MIT (the licence wolffe-lang's other tools use) |
+| `LICENSE` | Apache License 2.0 |
+| `.gitignore` | Ignore build artifacts and corpus outputs |
+| `prompts/` | The prompts that built mk |
 | `tests/corpus/` | Self-contained Makefiles with source files |

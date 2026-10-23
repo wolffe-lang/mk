@@ -30,3 +30,15 @@ Initial release. A `make` for the plain Makefile subset.
 - `|` order-only prerequisites
 - `::` double-colon rules
 - `$(wildcard …)`, `$(patsubst …)`, `$(shell …)`
+
+### Fixed
+
+- `-k -j` exit status (was 0, now 2)
+- command-line variables while parsing (were lost)
+- ``Nothing to be done`` (was printed for every up-to-date target)
+- `-s` and `-k` messages, serial and `-j` (were inconsistent)
+- `-n -j` runs nothing (was running recipes)
+- usage errors name the problem (were silent)
+- `-j` without a number sets no limit (was an error)
+- the official licence (was a retyping)
+- `--version` names the wolf it was built with
