@@ -1,12 +1,14 @@
 # mk
 
-> Written by wollf-v7sf3 under the OpenCode harness with human review.
-> The test matrix (36 rows against GNU make) is the reason to trust it.
+> **Built by wollf.** This program was written by [wollf-v7sf3](https://huggingface.co/wolffe-lang/wollf-v7sf3),
+> a 27B model trained to write wolf, driven through opencode by the prompts in `prompts/`, with a human
+> reviewer judging each phase and writing the next. Every claim below is pasted from the binary; the test
+> script is the reason to trust it.
 
 A `make` for the plain Makefile subset — targets, prerequisites, recipes, variables,
 automatic variables, mtime-driven rebuilds, `-n`, `-k`, and `-j N` — refusing everything
 else by name. If your Makefile has no pattern rules, no `include`, no `ifeq`, no functions,
-`mk` builds it identically to GNU make. `test.sh` compares `mk` against GNU make 3.81:
+`mk` builds it as GNU make does on the corpus below. `test.sh` compares `mk` against GNU make 3.81:
 - on 12 corpus directories: the first and the second run, serially and with `-j 2`, and `-n -j 2`;
 - on their own directories: `-k`, `-s` and a command-line variable;
 - each comparing the output, the exit status and the files written.
@@ -19,7 +21,7 @@ The refusals and usage errors are checked by name.
 wolf build main.lu -o mk
 ```
 
-Requires wolf (https://wolf-lang.org) and a POSIX shell.
+Requires wolf 0.2.34 (https://github.com/wolffe-lang/wolf-lang) and a POSIX shell.
 
 ## Usage
 
@@ -108,9 +110,9 @@ wolf fmt --check *.lu
 
 `test.sh` runs each corpus directory in a fresh `mktemp -d` copy, comparing `mk` against
 GNU `make` on the same Makefile. A row passes when the two tools agree on the observable
-behaviour (output, exit code, or file system state). The oracle is GNU make beside it.
+behaviour (output, exit status and the files written). The oracle is GNU make beside it.
 
-The 94 rows cover 12 directories across 10 test kinds: N1 (dry-run output), B1 (files
+The 94 rows cover 12 directories across 19 test kinds: N1 (dry-run output), B1 (files
 after build), B2 (second run), B3 (build from a subset), F1 (failure with `-k`), M1
 (missing target), C1 (cycle), J1 (wide build), J2 (diamond with `-j`), R1 (refusals),
 P1 (print database), J3 (parallel), U1/U2 (second-run comparison), D1 (dry-run with
@@ -123,7 +125,7 @@ P1 (print database), J3 (parallel), U1/U2 (second-run comparison), D1 (dry-run w
 |---|---|---|
 | `wide` (40 targets, `sleep 0.2` each) | 8.4 s | 1.1 s |
 
-Machine: Apple M5 Pro, macOS, wolf 0.1.0. Date: 2026-10-23.
+Machine: Apple M5 Pro, macOS, wolf 0.2.34. Date: 2026-10-23.
 
 ## Files
 
@@ -138,6 +140,7 @@ Machine: Apple M5 Pro, macOS, wolf 0.1.0. Date: 2026-10-23.
 | `test.sh` | Corpus tests against GNU make (94 rows) |
 | `SPEC.md` | The original specification (the prompt that built this) |
 | `CHANGELOG.md` | Version history |
+| `README.md` | this file |
 | `LICENSE` | Apache License 2.0 |
 | `.gitignore` | Ignore build artifacts and corpus outputs |
 | `prompts/` | The prompts that built mk |
