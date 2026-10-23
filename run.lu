@@ -36,10 +36,11 @@ struct BuildResult {
     exit_code: int,
 }
 
-/// An in-flight child with its target name.
+/// An in-flight child with its target name and recipe line number.
 struct Flight {
     name: str,
     child: process.Child,
+    recipe_line: int,
 }
 
 /// Prepare a recipe line for the shell.
@@ -70,7 +71,14 @@ fn recipe_for_shell(line: str) -> str {
 }
 
 /// Build a single target's recipe. Returns the result.
-fn build_target(g: Graph, v: Vars, name: str, silent: bool, built: Map[str, int]) -> BuildResult {
+fn build_target(
+    g: Graph,
+    v: Vars,
+    name: str,
+    silent: bool,
+    built: Map[str, int],
+    makefile: str,
+) -> BuildResult {
     let node = map.get(g.nodes, name) else {
         return BuildResult { name: name, success: false, exit_code: 2 }
     }
@@ -84,7 +92,10 @@ fn build_target(g: Graph, v: Vars, name: str, silent: bool, built: Map[str, int]
     let all_prereqs = str.join(" ", node.prereqs)
     let newer = newer_prereqs(g, name, built)
     let newer_prereqs_str = str.join(" ", newer)
-    for recipe_line in node.recipe {
+    var i = 0
+    while i < node.recipe.len {
+        let recipe_line = node.recipe[i]
+        let recipe_line_num = node.recipe_lines[i]
         let expanded = expand(v, recipe_line)
         let final_line = expand_auto(expanded, name, first_prereq, all_prereqs, newer_prereqs_str)
         var line = final_line
@@ -115,14 +126,15 @@ fn build_target(g: Graph, v: Vars, name: str, silent: bool, built: Map[str, int]
             unsupported => 127,
         }
         if exit_code != 0 && !ignore_errors {
-            eprint("mk: *** [{name}] Error {exit_code}")
+            eprint("mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}")
             return BuildResult { name: name, success: false, exit_code: exit_code }
         }
         if exit_code != 0 && ignore_errors {
             if !silent {
-                eprint("mk: [{name}] Error {exit_code} (ignored)")
+                eprint("mk: [{makefile}:{recipe_line_num}: {name}] Error {exit_code} (ignored)")
             }
         }
+        i += 1
     }
     return BuildResult { name: name, success: true, exit_code: 0 }
 }
@@ -139,6 +151,7 @@ fn build_recursive(
     mut built: Map[str, int],
     in_progress: str,
     needed_by: str,
+    makefile: str,
 ) -> BuildResult {
     if map.has(built, name) {
         return BuildResult { name: name, success: true, exit_code: 0 }
@@ -190,6 +203,7 @@ fn build_recursive(
             mut built,
             new_in_progress,
             name,
+            makefile,
         )
         if !result.success {
             if keep_going {
@@ -221,7 +235,8 @@ fn build_recursive(
                 var line = final_line
                 if line.starts_with("@") { line = line[1..] }
                 if line.starts_with("-") { line = line[1..] }
-                print(line)
+                let shell_line = recipe_for_shell(line)
+                print(shell_line)
             }
             map.set(mut built, name, 1)
         } else if is_goal && !silent {
@@ -245,7 +260,7 @@ fn build_recursive(
         map.set(mut built, name, 0)
         return BuildResult { name: name, success: true, exit_code: 0 }
     }
-    let result = build_target(g, v, name, silent, built)
+    let result = build_target(g, v, name, silent, built, makefile)
     if result.success {
         map.set(mut built, name, 1)
     }
@@ -355,6 +370,7 @@ fn build_goals(
     dry_run: bool,
     keep_going: bool,
     jobs: int,
+    makefile: str,
 ) -> int {
     if goals.len == 0 {
         if g.order.len > 0 {
@@ -365,10 +381,10 @@ fn build_goals(
     }
     // Serial mode: use DFS recursion
     if jobs == 1 {
-        return build_goals_serial(g, v, goals, silent, dry_run, keep_going)
+        return build_goals_serial(g, v, goals, silent, dry_run, keep_going, makefile)
     }
     // Parallel mode: use ready queue. jobs == 0 means no limit.
-    return build_goals_parallel(g, v, goals, silent, dry_run, keep_going, jobs)
+    return build_goals_parallel(g, v, goals, silent, dry_run, keep_going, jobs, makefile)
 }
 
 /// Serial build using DFS recursion.
@@ -379,6 +395,7 @@ fn build_goals_serial(
     silent: bool,
     dry_run: bool,
     keep_going: bool,
+    makefile: str,
 ) -> int {
     var built = Map[str, int]()
     var had_error = false
@@ -394,6 +411,7 @@ fn build_goals_serial(
             mut built,
             "\n",
             "",
+            makefile,
         )
         if !result.success {
             had_error = true
@@ -419,6 +437,7 @@ fn build_goals_parallel(
     dry_run: bool,
     keep_going: bool,
     jobs: int,
+    makefile: str,
 ) -> int {
     // Discover all targets in topological order
     var dropped = List[str]()
@@ -481,7 +500,7 @@ fn build_goals_parallel(
                 map.set(mut built, flight.name, 1)
             } else {
                 map.set(mut failed, flight.name, 1)
-                eprint("mk: *** [{flight.name}] Error {exit_code}")
+                eprint("mk: *** [{makefile}:{flight.recipe_line}: {flight.name}] Error {exit_code}")
                 if !keep_going {
                     // Kill remaining children
                     while in_flight.len > 0 {
@@ -533,7 +552,7 @@ fn build_goals_parallel(
                 map.set(mut built, flight.name, 1)
             } else {
                 map.set(mut failed, flight.name, 1)
-                eprint("mk: *** [{flight.name}] Error {exit_code}")
+                eprint("mk: *** [{makefile}:{flight.recipe_line}: {flight.name}] Error {exit_code}")
                 if !keep_going {
                     // Kill remaining children
                     while in_flight.len > 0 {
@@ -688,7 +707,8 @@ fn build_goals_parallel(
                     var line = final_line
                     if line.starts_with("@") { line = line[1..] }
                     if line.starts_with("-") { line = line[1..] }
-                    print(line)
+                    let shell_line = recipe_for_shell(line)
+                    print(shell_line)
                 }
                 map.set(mut started, name, 1)
                 map.set(mut built, name, 1)
@@ -702,9 +722,12 @@ fn build_goals_parallel(
             let newer_prereqs_str = str.join(" ", newer)
             // Build a script: set -e first; for each line, a printf of the line (unless @ or -s),
             // then the line alone inside ( : ... ) so a comment, a cd or a continuation stays
-            // inside its own subshell; a - line gets || echo "mk: [NAME] Error $? (ignored)" >&2.
+            // inside its own subshell; a - line gets || echo "mk: [Makefile:LINE: NAME] Error $? (ignored)" >&2.
             var combined = ""
-            for recipe_line in node.recipe {
+            var ri = 0
+            while ri < node.recipe.len {
+                let recipe_line = node.recipe[ri]
+                let recipe_line_num = node.recipe_lines[ri]
                 let expanded = expand(v, recipe_line)
                 let final_line = expand_auto(
                     expanded,
@@ -740,16 +763,22 @@ fn build_goals_parallel(
                     if silent {
                         combined = combined + "( :\n" + shell_line + "\n) || true\n"
                     } else {
+                        let line_str = "{recipe_line_num}"
                         combined = combined +
                             "( :\n" +
                             shell_line +
                             "\n) || echo \"mk: [" +
+                            makefile +
+                            ":" +
+                            line_str +
+                            ": " +
                             name +
                             "] Error $? (ignored)\" >&2\n"
                     }
                 } else {
                     combined = combined + "( :\n" + shell_line + "\n)\n"
                 }
+                ri += 1
             }
             let cmd = process.command("sh")
             process.push_arg(mut cmd, "-c")
@@ -787,7 +816,11 @@ fn build_goals_parallel(
                 },
             }
             // Add to in_flight
-            (mut in_flight).push(Flight { name: name, child: child })
+            (mut in_flight).push(Flight {
+                name: name,
+                child: child,
+                recipe_line: node.recipe_lines[0],
+            })
             map.set(mut started, name, 1)
             launched += 1
         }

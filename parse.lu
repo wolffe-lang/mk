@@ -19,6 +19,7 @@ struct Rule {
     targets: List[str],
     prereqs: List[str],
     recipe: List[str],
+    recipe_lines: List[int],
     line: int,
 }
 
@@ -34,6 +35,12 @@ struct Refusal {
     line: int,
 }
 
+/// A logical line with its first physical line number.
+struct Line {
+    text: str,
+    line: int,
+}
+
 /// The parsed Makefile database.
 struct Database {
     assignments: List[Assignment],
@@ -46,9 +53,11 @@ struct Database {
 /// A trailing `\` joins with the next line (one space between).
 /// A `#` ends the line.
 /// Recipe lines (tab-prefixed) are joined with continuations, preserving raw text.
-fn join_continuations(lines: List[str]) -> List[str] {
-    var result = List[str]()
+/// Returns lines with their first physical line number.
+fn join_continuations(lines: List[str]) -> List[Line] {
+    var result = List[Line]()
     var current = ""
+    var current_line = 0
     var in_continuation = false
     var in_recipe = false
     var i = 0
@@ -63,7 +72,7 @@ fn join_continuations(lines: List[str]) -> List[str] {
             if current.ends_with("\\") {
                 in_continuation = true
             } else {
-                (mut result).push(current)
+                (mut result).push(Line { text: current, line: current_line })
                 current = ""
                 in_continuation = false
                 in_recipe = false
@@ -76,7 +85,7 @@ fn join_continuations(lines: List[str]) -> List[str] {
             // If we were building a non-recipe line, push it.
             // This guard must NOT fire while in_recipe: a recipe line is still being built.
             if !in_recipe && current.len > 0 {
-                (mut result).push(current)
+                (mut result).push(Line { text: current, line: current_line })
                 current = ""
                 in_continuation = false
             }
@@ -86,16 +95,17 @@ fn join_continuations(lines: List[str]) -> List[str] {
             } else {
                 // New recipe line
                 if current.len > 0 {
-                    (mut result).push(current)
+                    (mut result).push(Line { text: current, line: current_line })
                 }
                 current = line
+                current_line = i + 1
                 in_recipe = true
             }
             // Check for trailing backslash
             if current.ends_with("\\") {
                 in_continuation = true
             } else {
-                (mut result).push(current)
+                (mut result).push(Line { text: current, line: current_line })
                 current = ""
                 in_continuation = false
                 in_recipe = false
@@ -107,7 +117,7 @@ fn join_continuations(lines: List[str]) -> List[str] {
         if in_recipe {
             // End of recipe block
             if current.len > 0 {
-                (mut result).push(current)
+                (mut result).push(Line { text: current, line: current_line })
                 current = ""
                 in_recipe = false
                 in_continuation = false
@@ -120,6 +130,7 @@ fn join_continuations(lines: List[str]) -> List[str] {
             current = current + " " + line.trim_start()
         } else {
             current = line
+            current_line = i + 1
         }
         // Check for trailing backslash
         if current.ends_with("\\") {
@@ -130,7 +141,7 @@ fn join_continuations(lines: List[str]) -> List[str] {
         } else {
             // Strip comments from non-recipe lines
             let stripped = strip_comment(current)
-            (mut result).push(stripped)
+            (mut result).push(Line { text: stripped, line: current_line })
             current = ""
             in_continuation = false
             i += 1
@@ -139,10 +150,10 @@ fn join_continuations(lines: List[str]) -> List[str] {
     // If the file ends with a continuation, push what we have
     if current.len > 0 {
         if in_recipe {
-            (mut result).push(current)
+            (mut result).push(Line { text: current, line: current_line })
         } else {
             let stripped = strip_comment(current)
-            (mut result).push(stripped)
+            (mut result).push(Line { text: stripped, line: current_line })
         }
     }
     return result
@@ -288,6 +299,7 @@ fn parse_rule(line: str, line_num: int) -> Rule ! {none} {
         targets: targets,
         prereqs: prereqs,
         recipe: List[str](),
+        recipe_lines: List[int](),
         line: line_num,
     }
 }
@@ -334,10 +346,12 @@ fn parse_makefile(text: str) -> Database ! {parse} {
         targets: List[str](),
         prereqs: List[str](),
         recipe: List[str](),
+        recipe_lines: List[int](),
         line: 0,
     }
     while line_num < logical_lines.len {
-        let line = logical_lines[line_num]
+        let line = logical_lines[line_num].text
+        let line_number = logical_lines[line_num].line
 
         // Check for recipe lines (start with tab)
         if line.starts_with("\t") {
@@ -349,6 +363,7 @@ fn parse_makefile(text: str) -> Database ! {parse} {
                     // No newline, strip the first tab
                     let recipe_line = line[1..]
                     (mut current_rule.recipe).push(recipe_line)
+                    (mut current_rule.recipe_lines).push(line_number)
                     line_num += 1
                     continue
                 }
@@ -357,6 +372,7 @@ fn parse_makefile(text: str) -> Database ! {parse} {
                 // line[1..] gives "FIRST\nREST" which is correct
                 let recipe_line = line[1..]
                 (mut current_rule.recipe).push(recipe_line)
+                (mut current_rule.recipe_lines).push(line_number)
             }
             line_num += 1
             continue
@@ -382,20 +398,20 @@ fn parse_makefile(text: str) -> Database ! {parse} {
         if refusal.len > 0 {
             (mut db.refusals).push(Refusal {
                 kind: refusal,
-                line: line_num + 1,
+                line: line_number,
             })
             line_num += 1
             continue
         }
 
         // Try to parse as assignment
-        let assignment = parse_assignment(stripped, line_num + 1) else |e| match e {
+        let assignment = parse_assignment(stripped, line_number) else |e| match e {
             none => {
                 // Not an assignment, try as .PHONY first (before rule, since .PHONY: looks like a rule)
-                let phony = parse_phony(stripped, line_num + 1) else |e3| match e3 {
+                let phony = parse_phony(stripped, line_number) else |e3| match e3 {
                     none => {
                         // Not .PHONY, try as rule
-                        let rule = parse_rule(stripped, line_num + 1) else |e2| match e2 {
+                        let rule = parse_rule(stripped, line_number) else |e2| match e2 {
                             none => {
                                 // Unknown line, skip
                                 line_num += 1

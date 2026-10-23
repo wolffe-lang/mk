@@ -31,6 +31,7 @@ struct Node {
     name: str,
     prereqs: List[str],
     recipe: List[str],
+    recipe_lines: List[int],
     line: int,
     is_phony: bool,
 }
@@ -55,6 +56,7 @@ fn add_node(
     name: str,
     prereqs: List[str],
     recipe: List[str],
+    recipe_lines: List[int],
     line: int,
     is_phony: bool,
 ) {
@@ -73,6 +75,7 @@ fn add_node(
                 name: name,
                 prereqs: merged,
                 recipe: recipe,
+                recipe_lines: recipe_lines,
                 line: line,
                 is_phony: is_phony,
             })
@@ -81,6 +84,7 @@ fn add_node(
                 name: name,
                 prereqs: merged,
                 recipe: existing.recipe,
+                recipe_lines: existing.recipe_lines,
                 line: existing.line,
                 is_phony: is_phony || existing.is_phony,
             })
@@ -91,6 +95,7 @@ fn add_node(
             name: name,
             prereqs: prereqs,
             recipe: recipe,
+            recipe_lines: recipe_lines,
             line: line,
             is_phony: is_phony,
         })
@@ -219,7 +224,7 @@ fn build_graph(db: Database, v: Vars) -> Graph {
                     (mut expanded_prereqs).push(word)
                 }
             }
-            add_node(mut g, t, expanded_prereqs, r.recipe, r.line, is_phony)
+            add_node(mut g, t, expanded_prereqs, r.recipe, r.recipe_lines, r.line, is_phony)
         }
     }
     return g

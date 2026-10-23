@@ -9,6 +9,7 @@ fn parse_rule_ok(line: str, n: int) -> Rule {
         targets: List[str](),
         prereqs: List[str](),
         recipe: List[str](),
+        recipe_lines: List[int](),
         line: 0,
     }
 }
@@ -33,7 +34,7 @@ fn test_join_continuations_basic() {
     (mut lines).push("c")
     let result = join_continuations(lines)
     assert(result.len == 1, "expected 1 line")
-    assert(result[0] == "a b c", "expected joined line")
+    assert(result[0].text == "a b c", "expected joined line")
 }
 
 fn test_join_continuations_none() {
@@ -51,7 +52,7 @@ fn test_join_continuations_trailing() {
     (mut lines).push("b")
     let result = join_continuations(lines)
     assert(result.len == 1, "expected 1 line")
-    assert(result[0] == "a b", "expected joined line")
+    assert(result[0].text == "a b", "expected joined line")
 }
 
 fn test_strip_comment_none() {

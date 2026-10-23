@@ -444,6 +444,15 @@ fn main() -> !int {
     // Build the graph
     let g = build_graph(db, v)
     // Build the goals
-    let exit_code = build_goals(g, v, mut f.goals, f.silent, f.dry_run, f.keep_going, f.jobs)
+    let exit_code = build_goals(
+        g,
+        v,
+        mut f.goals,
+        f.silent,
+        f.dry_run,
+        f.keep_going,
+        f.jobs,
+        f.file,
+    )
     return exit_code
 }

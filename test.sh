@@ -270,8 +270,8 @@ test_f1() {
     if [ "$mk_exit" -eq 2 ] && [ "$make_exit" -eq 2 ]; then
         local mk_err=$("$MK" -C "$copy" 2>&1)
         local make_err=$("$MAKE" -C "$copy" 2>&1)
-        if echo "$mk_err" | grep -q '\*\*\* \[result\] Error 3' && \
-           echo "$make_err" | grep -q '\*\*\* \[result\] Error 3'; then
+        if echo "$mk_err" | grep -q '\*\*\* \[Makefile:[0-9]*: result\] Error 3' && \
+           echo "$make_err" | grep -q '\*\*\* \[Makefile:[0-9]*: result\] Error 3'; then
             clean_copy "$copy" "$dir"
             local mk_k=$("$MK" -C "$copy" -k all other 2>&1)
             clean_copy "$copy" "$dir"
@@ -424,7 +424,7 @@ test_e1() {
     local pass_all=true
     local cases="-x|mk: invalid option -- x
 -f|mk: option requires an argument -- f
--j 0|mk: the \`-j' option requires a positive integral argument"
+-j 0|mk: the '-j' option requires a positive integer argument"
     while IFS='|' read -r args want; do
         local out err first st=0
         out=$(cd "$copy" && "$ROOT/mk" $args 2>/dev/null </dev/null) || st=$?
