@@ -1,0 +1,176 @@
+//! vars.lu — variable table, expansion, automatic variables.
+//!
+//! Variables: NAME = value (recursive), NAME := value (immediate),
+//! NAME ?= value (set if unset), NAME += value (append).
+//! Reference $(NAME) or ${NAME}; $$ is a literal $.
+//! Automatic variables: $@ $< $^ $?.
+//!
+//! **Expansion timing:** `:=` expands its right-hand side IMMEDIATELY when
+//! the assignment is encountered. `=` defers expansion until the variable is
+//! used (recursive expansion). `?=` and `+=` follow the same rule as their
+//! base flavour: `X ?= val` stores `val` unexpanded if `X` is unset;
+//! `X += val` appends ` val` to the existing value, expanding if the existing
+//! value was `:=`-style.
+//!
+//! **`$$` meaning:** In a Makefile, `$$` is a literal `$` that the shell
+//! receives. `mk` expands `$$` to `$` during variable expansion, so the shell
+//! sees `$VAR` and expands it from the environment.
+//!
+//! **`${NAME}` handling:** Handled in `expand` alongside `$(NAME)`, using
+//! `is_open_brace`/`close_brace` helpers to avoid the interpolation trap.
+//!
+//! **`+=` behaviour:** Appends ` value` to the existing value. The resulting
+//! flavour is `=` (recursive) regardless of the original flavour, matching
+//! GNU make's behaviour.
+
+use std.str
+use std.env
+use std.map
+
+/// A variable with its value and flavour.
+struct Var {
+    value: str,
+    flavour: str,
+}
+
+/// The variable table.
+struct Vars {
+    table: Map[str, Var],
+}
+
+/// Create a new empty variable table.
+fn new_vars() -> Vars {
+    Vars {
+        table: Map[str, Var](),
+    }
+}
+
+/// Set a variable with a given flavour.
+fn set_var(mut v: Vars, name: str, value: str, flavour: str) {
+    if flavour == "?=" {
+        if !map.has(v.table, name) {
+            map.set(mut v.table, name, Var { value: value, flavour: flavour })
+        }
+    } else if flavour == "+=" {
+        if map.has(v.table, name) {
+            let existing = var_value(v, name)
+            let new_value = existing + " " + value
+            map.set(mut v.table, name, Var { value: new_value, flavour: "=" })
+        } else {
+            map.set(mut v.table, name, Var { value: value, flavour: "=" })
+        }
+    } else if flavour == ":=" {
+        // := expands immediately
+        let expanded = expand(v, value)
+        map.set(mut v.table, name, Var { value: expanded, flavour: flavour })
+    } else {
+        map.set(mut v.table, name, Var { value: value, flavour: flavour })
+    }
+}
+
+/// Get a variable's value, or empty string if not found.
+fn var_value(v: Vars, name: str) -> str {
+    let val = map.get(v.table, name) else {
+        return ""
+    }
+    return val.value
+}
+
+/// Expand a string, resolving $(NAME) references.
+/// $$ is a literal $. ${NAME} is also supported.
+fn expand(v: Vars, s: str) -> str {
+    var result = ""
+    var i = 0
+    while i < s.len {
+        if s[i..i + 1] == "$" {
+            if i + 1 >= s.len {
+                result = result + "$"
+                i += 1
+                continue
+            }
+            let next = s[i + 1..i + 2]
+            if next == "$" {
+                result = result + "$"
+                i += 2
+                continue
+            }
+            if next == "(" {
+                let rest = s[i + 2..]
+                let end = rest.find(")") else {
+                    result = result + "$"
+                    i += 1
+                    continue
+                }
+                let name = rest[0..end]
+                let val = var_value(v, name)
+                if val.len > 0 {
+                    // Recursively expand the value
+                    result = result + expand(v, val)
+                } else {
+                    let env_val = env.get(name) else ""
+                    result = result + env_val
+                }
+                i = i + 2 + end + 1
+                continue
+            }
+            // Check for { — use a helper to avoid the interpolation trap
+            if is_open_brace(next) {
+                let rest = s[i + 2..]
+                let end = rest.find(close_brace()) else {
+                    result = result + "$"
+                    i += 1
+                    continue
+                }
+                let name = rest[0..end]
+                let val = var_value(v, name)
+                if val.len > 0 {
+                    // Recursively expand the value
+                    result = result + expand(v, val)
+                } else {
+                    let env_val = env.get(name) else ""
+                    result = result + env_val
+                }
+                i = i + 2 + end + 1
+                continue
+            }
+            // $@ $< $^ $? — automatic variables (keep as-is)
+            result = result + "$" + next
+            i += 2
+            continue
+        }
+        result = result + s[i..i + 1]
+        i += 1
+    }
+    return result
+}
+
+/// Return the { character as a string.
+fn open_brace() -> str {
+    "{{"
+}
+
+/// Return the } character as a string.
+fn close_brace() -> str {
+    "}}"
+}
+
+/// Check if a single-character string is {.
+fn is_open_brace(s: str) -> bool {
+    s == open_brace()
+}
+
+/// Expand automatic variables in a string.
+fn expand_auto(
+    s: str,
+    target: str,
+    first_prereq: str,
+    all_prereqs: str,
+    newer_prereqs: str,
+) -> str {
+    var result = s
+    result = result.replace("$@", target)
+    result = result.replace("$<", first_prereq)
+    result = result.replace("$^", all_prereqs)
+    result = result.replace("$?", newer_prereqs)
+    return result
+}
