@@ -71,7 +71,10 @@ R1 refuse
 P1 vars"
 for dir in $STANDARD fail missing cycle wide; do
     MATRIX="$MATRIX
-J3 $dir -j 2"
+J3 $dir -j 2
+U1 $dir
+U2 $dir -j 2
+D1 $dir -n -j 2"
 done
 
 # Count expected rows (trim leading newline first)
@@ -433,7 +436,7 @@ MATRIX_FILE=$(mktemp)
 echo "$MATRIX" > "$MATRIX_FILE"
 while read -r row dir args; do
     case "$row" in
-        J3) same_as_make "$row" "$dir" $args ;;
+        J3 | U1 | U2 | D1) same_as_make "$row" "$dir" $args ;;
         *) run_test "$row" "$dir" ;;
     esac
 done < "$MATRIX_FILE"
