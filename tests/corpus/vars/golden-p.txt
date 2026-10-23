@@ -1,0 +1,10 @@
+# Variables
+A = uno
+B = one two
+C = three
+D = x y
+E = $HOME
+# Rules
+all: vars.out
+vars.out:
+	@echo A=$(A) B=$(B) C=$(C) D=$(D) E=$(E) H=$(HOME_SET) O=$(OVR) > vars.out
