@@ -68,6 +68,10 @@ J1 wide
 J2 diamond
 R1 refuse
 P1 vars"
+for dir in $STANDARD fail missing cycle wide diamond vars; do
+    MATRIX="$MATRIX
+J3 $dir"
+done
 
 # Count expected rows (trim leading newline first)
 EXPECTED=$(echo "$MATRIX" | tail -n +2 | wc -l)
@@ -129,6 +133,7 @@ run_test() {
         J2) test_j2 "$copy" "$dir" ;;
         R1) test_r1 "$copy" "$dir" ;;
         P1) test_p1 "$copy" "$dir" ;;
+        J3) test_j3 "$copy" "$dir" ;;
     esac
 
     # Clean up the copy
@@ -383,6 +388,22 @@ test_p1() {
         PASS=$((PASS + 1))
     else
         echo "FAIL: P1 $dir"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# J3: -j 2 output matches make -j 2 (sorted, normalized) for every corpus directory
+test_j3() {
+    local copy="$1" dir="$2"
+    clean_copy "$copy" "$dir"
+    local mk_out=$("$MK" -C "$copy" -j 2 2>&1 | normalize | sort)
+    clean_copy "$copy" "$dir"
+    local make_out=$("$MAKE" -C "$copy" -j 2 2>&1 | normalize | sort)
+    if [ "$mk_out" = "$make_out" ]; then
+        echo "ok J3 $dir"
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: J3 $dir"
         FAIL=$((FAIL + 1))
     fi
 }
