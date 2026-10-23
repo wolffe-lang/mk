@@ -1,0 +1,336 @@
+//! main.lu — flags, goals, exit status, -p output.
+//!
+//! File layout (the module is one directory):
+//!   main.lu     — flags, goals, exit status, -p output (this file)
+//!   parse.lu    — Makefile parser: lines, continuations, assignments, rules, recipes
+//!   vars.lu     — variable table, expansion, automatic variables
+//!   graph.lu    — dependency graph, DFS, cycle detection, out-of-date decision
+//!   run.lu      — scheduler: ready queue, parallel execution, -n/-s/-k
+//!   mk_test.lu  — unit tests for the parser and variable flavours
+//!
+//! This file parses the CLI flags of README §4:
+//!   mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]...
+//!   mk --help
+//! and prints the parsed structure with --debug-opts.
+
+use std.env
+use std.str
+
+/// Parsed CLI flags for mk.
+struct Flags {
+    file: str,
+    dir: str,
+    dry_run: bool,
+    silent: bool,
+    keep_going: bool,
+    jobs: int,
+    print_db: bool,
+    overrides: List[str],
+    goals: List[str],
+}
+
+/// Print usage and exit 0.
+fn print_usage() -> int {
+    print("Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]...")
+    print("       mk --help")
+    print("")
+    print("  -p         print the parsed database (variables sorted, rules in file order)")
+    print("  -n         print recipes without running them")
+    print("  -s         silent mode (do not print recipes)")
+    print("  -k         keep going after a failure")
+    print("  -j N       allow up to N jobs simultaneously")
+    print("  -f FILE    read FILE as the Makefile")
+    print("  -C DIR     change to DIR before doing anything")
+    print("  NAME=VALUE set a variable from the command line")
+    0
+}
+
+/// Parse a single argument. Returns the kind of token found.
+fn parse_arg(arg: str) -> str {
+    if arg == "--help" {
+        return "help"
+    }
+    if arg == "--debug-opts" {
+        return "debug"
+    }
+    if arg == "-n" {
+        return "dry_run"
+    }
+    if arg == "-s" {
+        return "silent"
+    }
+    if arg == "-k" {
+        return "keep_going"
+    }
+    if arg == "-p" {
+        return "print_db"
+    }
+    if arg == "-f" {
+        return "file_flag"
+    }
+    if arg == "-C" {
+        return "dir_flag"
+    }
+    if arg == "-j" || arg.starts_with("-j") {
+        return "jobs_flag"
+    }
+    if arg.contains("=") {
+        return "override"
+    }
+    if arg.starts_with("-") {
+        return "unknown"
+    }
+    return "goal"
+}
+
+/// Extract the number from a -j flag using slicing.
+fn extract_jobs(arg: str) -> int {
+    if arg == "-j" {
+        return 0
+    }
+    let rest = arg[2..]
+    if rest.len == 0 {
+        return 0
+    }
+    let n = rest.to_int() else 0
+    if n <= 0 {
+        return 0
+    }
+    return n
+}
+
+/// Print the parsed flags in a debug format.
+fn print_flags(f: Flags) {
+    print("file: {f.file}")
+    print("dir: {f.dir}")
+    print("dry_run: {f.dry_run}")
+    print("silent: {f.silent}")
+    print("keep_going: {f.keep_going}")
+    print("jobs: {f.jobs}")
+    print("print_db: {f.print_db}")
+    print("overrides: {f.overrides.len} items")
+    for o in f.overrides {
+        print("  {o}")
+    }
+    print("goals: {f.goals.len} items")
+    for g in f.goals {
+        print("  {g}")
+    }
+}
+
+/// Parse the CLI arguments into a Flags struct.
+fn parse_flags(args: List[str]) -> Flags ! {help, parse} {
+    var f = Flags {
+        file: "Makefile",
+        dir: "",
+        dry_run: false,
+        silent: false,
+        keep_going: false,
+        jobs: 1,
+        print_db: false,
+        overrides: List[str](),
+        goals: List[str](),
+    }
+    var i = 0
+    while i < args.len {
+        let arg = args[i]
+        let kind = parse_arg(arg)
+        if kind == "help" {
+            return help
+        }
+        if kind == "debug" {
+            i += 1
+            continue
+        }
+        if kind == "dry_run" {
+            f.dry_run = true
+            i += 1
+            continue
+        }
+        if kind == "silent" {
+            f.silent = true
+            i += 1
+            continue
+        }
+        if kind == "keep_going" {
+            f.keep_going = true
+            i += 1
+            continue
+        }
+        if kind == "print_db" {
+            f.print_db = true
+            i += 1
+            continue
+        }
+        if kind == "file_flag" {
+            if i + 1 >= args.len {
+                return parse
+            }
+            f.file = args[i + 1]
+            i += 2
+            continue
+        }
+        if kind == "dir_flag" {
+            if i + 1 >= args.len {
+                return parse
+            }
+            f.dir = args[i + 1]
+            i += 2
+            continue
+        }
+        if kind == "jobs_flag" {
+            if arg == "-j" {
+                if i + 1 < args.len {
+                    let next = args[i + 1]
+                    let n = next.to_int() else {
+                        return parse
+                    }
+                    if n <= 0 {
+                        return parse
+                    }
+                    f.jobs = n
+                    i += 2
+                } else {
+                    f.jobs = 0
+                    i += 1
+                }
+            } else {
+                let n = extract_jobs(arg)
+                if n <= 0 {
+                    return parse
+                }
+                f.jobs = n
+                i += 1
+            }
+            continue
+        }
+        if kind == "override" {
+            (mut f.overrides).push(arg)
+            i += 1
+            continue
+        }
+        if kind == "unknown" {
+            return parse
+        }
+        if kind == "goal" {
+            (mut f.goals).push(arg)
+            i += 1
+            continue
+        }
+        return parse
+    }
+    return f
+}
+
+/// Parse the Makefile and build the variable table.
+fn build_vars(db: Database) -> Vars {
+    var v = new_vars()
+    for a in db.assignments {
+        set_var(mut v, a.name, a.value, a.op)
+    }
+    return v
+}
+
+fn main() -> !int {
+    let args = env.args()
+    var debug = false
+    var i = 0
+    while i < args.len {
+        if args[i] == "--debug-opts" {
+            debug = true
+        }
+        i += 1
+    }
+    if debug {
+        let f = parse_flags(args) else |e| match e {
+            help => {
+                print_usage()
+                return 0
+            },
+            parse => {
+                return 2
+            },
+        }
+        print_flags(f)
+        return 0
+    }
+    let f = parse_flags(args) else |e| match e {
+        help => {
+            print_usage()
+            return 0
+        },
+        parse => {
+            return 2
+        },
+    }
+    // Change directory if -C is used
+    if f.dir.len > 0 {
+        env.set_cwd(f.dir) else |e| match e {
+            io => {
+                eprint("mk: cannot change to {f.dir}")
+                return 2
+            },
+            denied => {
+                eprint("mk: cannot change to {f.dir}")
+                return 2
+            },
+            not_found => {
+                eprint("mk: cannot change to {f.dir}")
+                return 2
+            },
+        }
+    }
+    if f.print_db {
+        let db = parse_makefile_file(f.file) else |e| match e {
+            parse => {
+                return 2
+            },
+            io => {
+                eprint("mk: cannot read {f.file}")
+                return 2
+            },
+        }
+        if db.refusals.len > 0 {
+            // Print only the first refusal on stderr with the correct format
+            let r = db.refusals[0]
+            eprint("mk: {f.file}:{r.line}: {r.kind}")
+            return 2
+        }
+        // Build the variable table for expansion
+        var v = build_vars(db)
+        print_database(db, v)
+        return 0
+    }
+    // Parse the Makefile
+    let db = parse_makefile_file(f.file) else |e| match e {
+        parse => {
+            return 2
+        },
+        io => {
+            eprint("mk: cannot read {f.file}")
+            return 2
+        },
+    }
+    if db.refusals.len > 0 {
+        // Print only the first refusal on stderr with the correct format
+        let r = db.refusals[0]
+        eprint("mk: {f.file}:{r.line}: {r.kind}")
+        return 2
+    }
+    // Build the variable table
+    var v = build_vars(db)
+    // Apply command-line overrides
+    for o in f.overrides {
+        let eq = o.find("=") else {
+            continue
+        }
+        let name = o[0..eq]
+        let value = o[eq + 1..]
+        set_var(mut v, name, value, ":=")
+    }
+    // Build the graph
+    let g = build_graph(db, v)
+    // Build the goals
+    let exit_code = build_goals(g, v, mut f.goals, f.silent, f.dry_run, f.keep_going, f.jobs)
+    return exit_code
+}
