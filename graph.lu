@@ -1,0 +1,224 @@
+//! graph.lu — dependency graph, DFS, cycle detection, out-of-date decision.
+//!
+//! Targets, prerequisites merged across rules, the DFS discovery order,
+//! cycle detection, out-of-date decision (fs.modified_ms, fs.exists).
+//!
+//! README §2.1 names three cases for a prerequisite:
+//!   1. It has a rule — build it (recursively).
+//!   2. It has no rule and does not exist — error (the "missing" case).
+//!   3. It has no rule and exists — a leaf (source file); it is already built.
+//!
+//! `run.lu`'s `build_recursive` handles case 1 (the recursive call) and case 2
+//! (the error at line 105). Case 3 was MISSING: a prerequisite with no rule
+//! was always treated as an error. The fix checks `fs.exists` for a name not
+//! found in the graph: if it exists, it is a leaf and is marked built.
+//!
+//! A leaf's "built" state is `0` (present, not rebuilt) in the `built` map.
+//! Its mtime contributes to the out-of-date decision of the target above it:
+//! `is_out_of_date` compares the leaf's mtime with the target's mtime; if the
+//! leaf is newer, the target is out of date. A leaf that was not rebuilt in
+//! this run still counts as built (value 1) so its mtime is checked.
+//!
+//! `-n` prints nothing for a leaf: it has no recipe, so there is nothing to
+//! echo. The target that depends on it prints its own recipe as usual.
+
+use std.fs
+use std.str
+use std.map
+
+/// A node in the dependency graph.
+struct Node {
+    name: str,
+    prereqs: List[str],
+    recipe: List[str],
+    line: int,
+    is_phony: bool,
+}
+
+/// The dependency graph.
+struct Graph {
+    nodes: Map[str, Node],
+    order: List[str],
+}
+
+/// Create a new empty graph.
+fn new_graph() -> Graph {
+    Graph {
+        nodes: Map[str, Node](),
+        order: List[str](),
+    }
+}
+
+/// Add a node to the graph.
+fn add_node(
+    mut g: Graph,
+    name: str,
+    prereqs: List[str],
+    recipe: List[str],
+    line: int,
+    is_phony: bool,
+) {
+    if map.has(g.nodes, name) {
+        // Merge prerequisites
+        let existing = map.get(g.nodes, name) else {
+            return
+        }
+        var merged = existing.prereqs
+        for p in prereqs {
+            (mut merged).push(p)
+        }
+        // Use the recipe from the first rule that has one
+        if existing.recipe.len == 0 && recipe.len > 0 {
+            map.set(mut g.nodes, name, Node {
+                name: name,
+                prereqs: merged,
+                recipe: recipe,
+                line: line,
+                is_phony: is_phony,
+            })
+        } else {
+            map.set(mut g.nodes, name, Node {
+                name: name,
+                prereqs: merged,
+                recipe: existing.recipe,
+                line: existing.line,
+                is_phony: is_phony || existing.is_phony,
+            })
+        }
+    } else {
+        (mut g.order).push(name)
+        map.set(mut g.nodes, name, Node {
+            name: name,
+            prereqs: prereqs,
+            recipe: recipe,
+            line: line,
+            is_phony: is_phony,
+        })
+    }
+}
+
+/// Check if a target is out of date.
+fn is_out_of_date(g: Graph, name: str, built: Map[str, int]) -> bool {
+    let node = map.get(g.nodes, name) else {
+        return true
+    }
+    // Phony targets are always out of date
+    if node.is_phony {
+        return true
+    }
+    // If the target has no recipe, it's up to date if all prerequisites are up to date
+    if node.recipe.len == 0 {
+        // Check if all prerequisites exist and are up to date
+        for p in node.prereqs {
+            if !fs.exists(p) {
+                return true
+            }
+            // If a prerequisite was rebuilt in this run (value > 0), the target is out of date
+            let v = map.get(built, p) else 0
+            if v > 0 {
+                return true
+            }
+            // If a prerequisite was cycle-broken (value < 0), skip it (dependency dropped)
+            if v < 0 {
+                continue
+            }
+        }
+        return false
+    }
+    // If the target does not exist, it is out of date
+    if !fs.exists(name) {
+        return true
+    }
+    // If any prerequisite is newer, the target is out of date
+    let target_mtime = fs.modified_ms(name) else {
+        return true
+    }
+    for p in node.prereqs {
+        // If a prerequisite was rebuilt in this run (value > 0), the target is out of date
+        let v = map.get(built, p) else 0
+        if v > 0 {
+            return true
+        }
+        // If a prerequisite was cycle-broken (value < 0), skip it (dependency dropped)
+        if v < 0 {
+            continue
+        }
+        if !fs.exists(p) {
+            continue
+        }
+        let prereq_mtime = fs.modified_ms(p) else {
+            continue
+        }
+        if prereq_mtime > target_mtime {
+            return true
+        }
+    }
+    return false
+}
+
+/// Get the list of newer prerequisites for a target.
+fn newer_prereqs(g: Graph, name: str, built: Map[str, int]) -> List[str] {
+    var result = List[str]()
+    let node = map.get(g.nodes, name) else {
+        return result
+    }
+    if !fs.exists(name) {
+        return node.prereqs
+    }
+    let target_mtime = fs.modified_ms(name) else {
+        return node.prereqs
+    }
+    for p in node.prereqs {
+        // If a prerequisite was rebuilt in this run (value > 0), it's considered newer
+        let v = map.get(built, p) else 0
+        if v > 0 {
+            (mut result).push(p)
+            continue
+        }
+        // If a prerequisite was cycle-broken (value < 0), skip it (dependency dropped)
+        if v < 0 {
+            continue
+        }
+        if !fs.exists(p) {
+            continue
+        }
+        let prereq_mtime = fs.modified_ms(p) else {
+            continue
+        }
+        if prereq_mtime > target_mtime {
+            (mut result).push(p)
+        }
+    }
+    return result
+}
+
+/// Build the graph from a parsed database.
+/// Variables in prerequisite names are expanded at graph-build time,
+/// so that `all: $(OBJS)` resolves to `all: a.txt b.txt c.txt`.
+fn build_graph(db: Database, v: Vars) -> Graph {
+    var g = new_graph()
+    // Build a set of phony names
+    var phony_set = Map[str, int]()
+    for p in db.phonies {
+        for n in p.names {
+            map.set(mut phony_set, n, 1)
+        }
+    }
+    // Add rules — expand variables in prerequisite names
+    for r in db.rules {
+        for t in r.targets {
+            let is_phony = map.has(phony_set, t)
+            // Expand prerequisite names and split on whitespace
+            var expanded_prereqs = List[str]()
+            for p in r.prereqs {
+                let expanded = expand(v, p)
+                // Split on whitespace to handle variables that expand to multiple words
+                for word in expanded.words() {
+                    (mut expanded_prereqs).push(word)
+                }
+            }
+            add_node(mut g, t, expanded_prereqs, r.recipe, r.line, is_phony)
+        }
+    }
+    return g
+}
