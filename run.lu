@@ -730,12 +730,16 @@ fn build_goals_parallel(
                     combined = combined + "printf '%s\\n' '" + quoted + "'\n"
                 }
                 if ignore_errors {
-                    combined = combined +
-                        "( :\n" +
-                        shell_line +
-                        "\n) || echo \"mk: [" +
-                        name +
-                        "] Error $? (ignored)\" >&2\n"
+                    if silent {
+                        combined = combined + "( :\n" + shell_line + "\n) || true\n"
+                    } else {
+                        combined = combined +
+                            "( :\n" +
+                            shell_line +
+                            "\n) || echo \"mk: [" +
+                            name +
+                            "] Error $? (ignored)\" >&2\n"
+                    }
                 } else {
                     combined = combined + "( :\n" + shell_line + "\n)\n"
                 }
