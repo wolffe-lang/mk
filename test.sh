@@ -8,7 +8,7 @@
 set -euo pipefail
 
 MK="./mk"
-MAKE="make"
+MAKE="${MAKE:-gmake}"
 CORPUS_DIR="tests/corpus"
 ROOT=$(pwd)
 
@@ -25,6 +25,12 @@ if [ ! -x "$MK" ]; then
 fi
 if ! command -v "$MAKE" >/dev/null 2>&1; then
     echo "ERROR: $MAKE not found"
+    exit 2
+fi
+# Pre-flight: the oracle must be GNU Make 4.4.1
+MAKE_VERSION=$("$MAKE" --version | head -1)
+if [ "$MAKE_VERSION" != "GNU Make 4.4.1" ]; then
+    echo "ERROR: $MAKE is not GNU Make 4.4.1 (got: $MAKE_VERSION)"
     exit 2
 fi
 
@@ -94,9 +100,10 @@ PASS=0
 FAIL=0
 OK_LINES=""
 
-# Normalize prefix: replace "mk:" with "make:" so the comparison is fair
+# Normalize prefix: replace "mk:" or "gmake:" with "make:" so the comparison is fair.
+# Also strip gmake's "Entering/Leaving directory" lines (mk does not print them).
 normalize() {
-    sed 's/^mk:/make:/g'
+    sed -E 's/^(gmake|make|mk):/MAKE:/' | grep -v '^MAKE: Entering directory' | grep -v '^MAKE: Leaving directory'
 }
 
 # Clean a copy of a corpus directory
@@ -478,8 +485,8 @@ same_as_make() {
     local make_out mk_out make_st=0 mk_st=0
     make_out=$(cd "$a" && "$MAKE" "$@" 2>&1 </dev/null) || make_st=$?
     mk_out=$(cd "$b" && "$ROOT/mk" "$@" 2>&1 </dev/null) || mk_st=$?
-    make_out=$(printf '%s\n' "$make_out" | sed 's/^make:/TOOL:/' | sort)
-    mk_out=$(printf '%s\n' "$mk_out" | sed 's/^mk:/TOOL:/' | sort)
+    make_out=$(printf '%s\n' "$make_out" | sed -E 's/^(gmake|make):/TOOL:/' | sort)
+    mk_out=$(printf '%s\n' "$mk_out" | sed -E 's/^(gmake|make|mk):/TOOL:/' | sort)
     local make_files mk_files
     make_files=$(cd "$a" && find . -type f | sort | while read -r f; do echo "$f"; cat "$f"; done | shasum)
     mk_files=$(cd "$b" && find . -type f | sort | while read -r f; do echo "$f"; cat "$f"; done | shasum)
