@@ -20,6 +20,7 @@ use std.map
 
 /// The version string, embedded at build time.
 let VERSION: str = "0.1.0"
+let WOLF_VERSION: str = "0.2.34"
 
 /// Parsed CLI flags for mk.
 struct Flags {
@@ -267,7 +268,7 @@ fn main() -> !int {
                 return 0
             },
             version => {
-                print("mk {VERSION}")
+                print("mk {VERSION} (built with wolf {WOLF_VERSION})")
                 return 0
             },
             parse => {
@@ -283,7 +284,7 @@ fn main() -> !int {
             return 0
         },
         version => {
-            print("mk {VERSION}")
+            print("mk {VERSION} (built with wolf {WOLF_VERSION})")
             return 0
         },
         parse => {
