@@ -604,12 +604,18 @@ fn build_goals_parallel(
                 map.set(mut failed, name, 1)
                 map.set(mut started, name, 1)
                 done += 1
-                // Always exit 2 for missing prerequisites, regardless of -k
-                while in_flight.len > 0 {
-                    let f = (mut in_flight).pop() else { break }
-                    process.kill(mut f.child) else |_| {}
+                if !keep_going {
+                    while in_flight.len > 0 {
+                        let f = (mut in_flight).pop() else { break }
+                        process.kill(mut f.child) else |_| {}
+                    }
+                    return 2
                 }
-                return 2
+                // If this is a goal, track it for the "not remade" message
+                if map.has(goal_set, name) {
+                    (mut failed_goals).push(name)
+                }
+                continue
             }
             var prereq_failed = false
             for p in node.prereqs {
