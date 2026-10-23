@@ -45,12 +45,18 @@ fn print_usage() -> int {
     print("  -n         print recipes without running them")
     print("  -s         silent mode (do not print recipes)")
     print("  -k         keep going after a failure")
-    print("  -j N       allow up to N jobs simultaneously")
+    print("  -j [N]     allow up to N jobs at once; no N: no limit")
     print("  -f FILE    read FILE as the Makefile")
     print("  -C DIR     change to DIR before doing anything")
     print("  --version  print the version and exit")
     print("  NAME=VALUE set a variable from the command line")
     0
+}
+
+/// A parse error with a description.
+struct ParseError {
+    kind: str,
+    arg: str,
 }
 
 /// Parse a single argument. Returns the kind of token found.
@@ -129,8 +135,14 @@ fn print_flags(f: Flags) {
     }
 }
 
+/// Print the usage text to stderr.
+fn print_usage_stderr() {
+    eprint("Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]...")
+    eprint("       mk --help")
+}
+
 /// Parse the CLI arguments into a Flags struct.
-fn parse_flags(args: List[str]) -> Flags ! {help, version, parse} {
+fn parse_flags(args: List[str]) -> Flags ! {help, version, Parse(ParseError)} {
     var f = Flags {
         file: "Makefile",
         dir: "",
@@ -178,7 +190,7 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, parse} {
         }
         if kind == "file_flag" {
             if i + 1 >= args.len {
-                return parse
+                return Parse(ParseError { kind: "missing_arg", arg: "-f" })
             }
             f.file = args[i + 1]
             i += 2
@@ -186,7 +198,7 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, parse} {
         }
         if kind == "dir_flag" {
             if i + 1 >= args.len {
-                return parse
+                return Parse(ParseError { kind: "missing_arg", arg: "-C" })
             }
             f.dir = args[i + 1]
             i += 2
@@ -197,21 +209,25 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, parse} {
                 if i + 1 < args.len {
                     let next = args[i + 1]
                     let n = next.to_int() else {
-                        return parse
+                        // Not a number; treat it as a goal
+                        (mut f.goals).push(next)
+                        i += 2
+                        continue
                     }
                     if n <= 0 {
-                        return parse
+                        return Parse(ParseError { kind: "bad_jobs", arg: arg })
                     }
                     f.jobs = n
                     i += 2
                 } else {
+                    // -j is the last argument; no limit
                     f.jobs = 0
                     i += 1
                 }
             } else {
                 let n = extract_jobs(arg)
                 if n <= 0 {
-                    return parse
+                    return Parse(ParseError { kind: "bad_jobs", arg: arg })
                 }
                 f.jobs = n
                 i += 1
@@ -224,14 +240,17 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, parse} {
             continue
         }
         if kind == "unknown" {
-            return parse
+            if arg.starts_with("--") {
+                return Parse(ParseError { kind: "unrecognized", arg: arg })
+            }
+            return Parse(ParseError { kind: "invalid", arg: arg })
         }
         if kind == "goal" {
             (mut f.goals).push(arg)
             i += 1
             continue
         }
-        return parse
+        return Parse(ParseError { kind: "unknown", arg: arg })
     }
     return f
 }
@@ -271,7 +290,19 @@ fn main() -> !int {
                 print("mk {VERSION} (built with wolf {WOLF_VERSION})")
                 return 0
             },
-            parse => {
+            Parse(p) => {
+                if p.kind == "invalid" {
+                    eprint("mk: invalid option -- {p.arg[1..]}")
+                } else if p.kind == "missing_arg" {
+                    eprint("mk: option requires an argument -- {p.arg[1..]}")
+                } else if p.kind == "bad_jobs" {
+                    eprint("mk: the `-j' option requires a positive integral argument")
+                } else if p.kind == "unrecognized" {
+                    eprint("mk: unrecognized option '{p.arg}'")
+                } else {
+                    eprint("mk: invalid option -- {p.arg[1..]}")
+                }
+                print_usage_stderr()
                 return 2
             },
         }
@@ -287,7 +318,19 @@ fn main() -> !int {
             print("mk {VERSION} (built with wolf {WOLF_VERSION})")
             return 0
         },
-        parse => {
+        Parse(p) => {
+            if p.kind == "invalid" {
+                eprint("mk: invalid option -- {p.arg[1..]}")
+            } else if p.kind == "missing_arg" {
+                eprint("mk: option requires an argument -- {p.arg[1..]}")
+            } else if p.kind == "bad_jobs" {
+                eprint("mk: the `-j' option requires a positive integral argument")
+            } else if p.kind == "unrecognized" {
+                eprint("mk: unrecognized option '{p.arg}'")
+            } else {
+                eprint("mk: invalid option -- {p.arg[1..]}")
+            }
+            print_usage_stderr()
             return 2
         },
     }
