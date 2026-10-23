@@ -46,7 +46,14 @@ fn new_vars() -> Vars {
 }
 
 /// Set a variable with a given flavour.
-fn set_var(mut v: Vars, name: str, value: str, flavour: str) {
+/// If `skip_if_set` is true and the name is already in the table, the assignment is a no-op.
+/// This is used for command-line overrides: a Makefile assignment to a command-line name
+/// is ignored, so the command-line value wins even for `:=` assignments.
+fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, skip_if_set: bool) {
+    if skip_if_set && map.has(v.table, name) {
+        // This name was set from the command line; ignore the Makefile assignment
+        return
+    }
     if flavour == "?=" {
         if !map.has(v.table, name) {
             map.set(mut v.table, name, Var { value: value, flavour: flavour })
@@ -66,6 +73,16 @@ fn set_var(mut v: Vars, name: str, value: str, flavour: str) {
     } else {
         map.set(mut v.table, name, Var { value: value, flavour: flavour })
     }
+}
+
+/// Set a variable with a given flavour (skip_if_set = false).
+fn set_var(mut v: Vars, name: str, value: str, flavour: str) {
+    set_var_impl(mut v, name, value, flavour, false)
+}
+
+/// Set a variable with a given flavour, skipping if already set.
+fn set_var_skip(mut v: Vars, name: str, value: str, flavour: str) {
+    set_var_impl(mut v, name, value, flavour, true)
 }
 
 /// Get a variable's value, or empty string if not found.

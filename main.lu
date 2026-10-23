@@ -11,10 +11,15 @@
 //! This file parses the CLI flags of README §4:
 //!   mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]...
 //!   mk --help
+//!   mk --version
 //! and prints the parsed structure with --debug-opts.
 
 use std.env
 use std.str
+use std.map
+
+/// The version string, embedded at build time.
+let VERSION: str = "0.1.0"
 
 /// Parsed CLI flags for mk.
 struct Flags {
@@ -33,6 +38,7 @@ struct Flags {
 fn print_usage() -> int {
     print("Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]...")
     print("       mk --help")
+    print("       mk --version")
     print("")
     print("  -p         print the parsed database (variables sorted, rules in file order)")
     print("  -n         print recipes without running them")
@@ -41,6 +47,7 @@ fn print_usage() -> int {
     print("  -j N       allow up to N jobs simultaneously")
     print("  -f FILE    read FILE as the Makefile")
     print("  -C DIR     change to DIR before doing anything")
+    print("  --version  print the version and exit")
     print("  NAME=VALUE set a variable from the command line")
     0
 }
@@ -49,6 +56,9 @@ fn print_usage() -> int {
 fn parse_arg(arg: str) -> str {
     if arg == "--help" {
         return "help"
+    }
+    if arg == "--version" {
+        return "version"
     }
     if arg == "--debug-opts" {
         return "debug"
@@ -119,7 +129,7 @@ fn print_flags(f: Flags) {
 }
 
 /// Parse the CLI arguments into a Flags struct.
-fn parse_flags(args: List[str]) -> Flags ! {help, parse} {
+fn parse_flags(args: List[str]) -> Flags ! {help, version, parse} {
     var f = Flags {
         file: "Makefile",
         dir: "",
@@ -137,6 +147,9 @@ fn parse_flags(args: List[str]) -> Flags ! {help, parse} {
         let kind = parse_arg(arg)
         if kind == "help" {
             return help
+        }
+        if kind == "version" {
+            return version
         }
         if kind == "debug" {
             i += 1
@@ -223,9 +236,15 @@ fn parse_flags(args: List[str]) -> Flags ! {help, parse} {
 }
 
 /// Parse the Makefile and build the variable table.
-fn build_vars(db: Database) -> Vars {
+/// `cli_names` is the set of variable names that were set on the command line.
+/// Assignments to those names are ignored (the command-line value wins).
+fn build_vars(db: Database, cli_names: Map[str, int]) -> Vars {
     var v = new_vars()
     for a in db.assignments {
+        // If this name was set on the command line, skip the Makefile assignment
+        if map.has(cli_names, a.name) {
+            continue
+        }
         set_var(mut v, a.name, a.value, a.op)
     }
     return v
@@ -247,6 +266,10 @@ fn main() -> !int {
                 print_usage()
                 return 0
             },
+            version => {
+                print("mk {VERSION}")
+                return 0
+            },
             parse => {
                 return 2
             },
@@ -257,6 +280,10 @@ fn main() -> !int {
     let f = parse_flags(args) else |e| match e {
         help => {
             print_usage()
+            return 0
+        },
+        version => {
+            print("mk {VERSION}")
             return 0
         },
         parse => {
@@ -297,7 +324,32 @@ fn main() -> !int {
             return 2
         }
         // Build the variable table for expansion
-        var v = build_vars(db)
+        // First, collect CLI override names
+        var cli_names = Map[str, int]()
+        for o in f.overrides {
+            let eq = o.find("=") else {
+                continue
+            }
+            let name = o[0..eq]
+            map.set(mut cli_names, name, 1)
+        }
+        // Seed the variable table with command-line overrides
+        var v = new_vars()
+        for o in f.overrides {
+            let eq = o.find("=") else {
+                continue
+            }
+            let name = o[0..eq]
+            let value = o[eq + 1..]
+            set_var(mut v, name, value, ":=")
+        }
+        // Now process Makefile assignments, skipping CLI names
+        for a in db.assignments {
+            if map.has(cli_names, a.name) {
+                continue
+            }
+            set_var(mut v, a.name, a.value, a.op)
+        }
         print_database(db, v)
         return 0
     }
@@ -318,8 +370,17 @@ fn main() -> !int {
         return 2
     }
     // Build the variable table
-    var v = build_vars(db)
-    // Apply command-line overrides
+    // First, collect CLI override names
+    var cli_names = Map[str, int]()
+    for o in f.overrides {
+        let eq = o.find("=") else {
+            continue
+        }
+        let name = o[0..eq]
+        map.set(mut cli_names, name, 1)
+    }
+    // Seed the variable table with command-line overrides
+    var v = new_vars()
     for o in f.overrides {
         let eq = o.find("=") else {
             continue
@@ -327,6 +388,13 @@ fn main() -> !int {
         let name = o[0..eq]
         let value = o[eq + 1..]
         set_var(mut v, name, value, ":=")
+    }
+    // Now process Makefile assignments, skipping CLI names
+    for a in db.assignments {
+        if map.has(cli_names, a.name) {
+            continue
+        }
+        set_var(mut v, a.name, a.value, a.op)
     }
     // Build the graph
     let g = build_graph(db, v)

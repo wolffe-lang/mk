@@ -102,11 +102,9 @@ fn is_out_of_date(g: Graph, name: str, built: Map[str, int]) -> bool {
     let node = map.get(g.nodes, name) else {
         return true
     }
-    // Phony targets are always out of date
-    if node.is_phony {
-        return true
-    }
-    // If the target has no recipe, it's up to date if all prerequisites are up to date
+    // If the target has no recipe, it's up to date if all prerequisites are up to date.
+    // This check comes BEFORE the phony check: a phony target with no recipe prints
+    // "Nothing to be done" when all prereqs are up to date (matching GNU make).
     if node.recipe.len == 0 {
         // Check if all prerequisites exist and are up to date
         for p in node.prereqs {
@@ -124,6 +122,10 @@ fn is_out_of_date(g: Graph, name: str, built: Map[str, int]) -> bool {
             }
         }
         return false
+    }
+    // Phony targets are always out of date (but only if they have a recipe)
+    if node.is_phony {
+        return true
     }
     // If the target does not exist, it is out of date
     if !fs.exists(name) {
