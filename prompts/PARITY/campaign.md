@@ -67,7 +67,13 @@ Before the first prompt of a session, in the project directory:
    and a `rows` file) and commits them while they are red: `rows: <feature> (red)`. Then the implementation
    commit makes them green. The history shows the gate red before green.
 5. **One commit per item**, imperative, one line, no trailers: `include, -include and sinclude`, not
-   "Implement include support". The prompt names each commit.
+   "Implement include support". The prompt names each commit. **But never undo, stash, revert or re-type
+   finished edits to get there.** The commit list is the shape to aim for while the work is still ahead;
+   once edits exist in the tree, the only commands are `git add` and `git commit`. If the changes are
+   interleaved and cannot be staged in the groups the prompt named, commit them as one batch with a message
+   that lists what it holds (`include and -I DIR: the directive, the search path, the rows`), say so in the
+   verify, and move on. A clean history is worth less than the working tree; a reviewer would rather read one
+   honest batch commit than a tidy sequence made by deleting and rewriting working code.
 6. **The README moves with the code.** A construct leaves the *Refused* table and enters the *Accepted* table
    in the same prompt that lands it, with its one-line example. The usage block is re-pasted from `./mk --help`
    whenever `--help` changes. The *Tests* section's row count is updated at every track's last prompt. A
