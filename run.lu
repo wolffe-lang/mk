@@ -1,0 +1,659 @@
+//! run.lu — scheduler: serial and parallel (-j N) execution, -n/-s/-k.
+//!
+//! Serial mode (-j 1): DFS recursion, prerequisites built first.
+//! Parallel mode (-j N): ready queue with process.start() and process.poll().
+//! -k keeps going after a failure. Cycle detection drops back-edges.
+//!
+//! **Concurrency control:** The scheduler tracks `in_flight` children.
+//! When `in_flight.len >= jobs`, it blocks on `process.poll()` until a
+//! child finishes, then launches the next ready target. This ensures at
+//! most N children run simultaneously.
+//!
+//! **Waiting on children:** `process.poll()` is non-blocking; it returns
+//! `changed: false` when no child has finished. The scheduler loops on
+//! `poll()` until a child finishes (or an error occurs), then reaps it
+//! and launches the next ready target.
+//!
+//! **Ready targets:** A target is ready when all its prerequisites are
+//! in the `built` map. Targets are started in topological order (the
+//! discovery order from `discover_targets`), which is the same order
+//! GNU make uses.
+//!
+//! **Failure under -k:** When a child fails, its target is added to
+//! `failed`. Dependent targets are skipped (prereq_failed). Other
+//! independent targets continue to build. The final exit code is 2
+//! if any target failed.
+
+use std.fs
+use std.str
+use std.map
+use std.process
+
+/// Result of building a target.
+struct BuildResult {
+    name: str,
+    success: bool,
+    exit_code: int,
+}
+
+/// An in-flight child with its target name.
+struct Flight {
+    name: str,
+    child: process.Child,
+}
+
+/// Prepare a recipe line for the shell.
+/// A recipe line stored in the database may contain backslash-newline pairs
+/// from continuations. GNU make removes one tab that follows each such pair.
+/// This helper replaces each `\` + newline with a single space, and deletes
+/// one tab that follows each such pair (the tab is part of the continuation,
+/// not the recipe text).
+fn recipe_for_shell(line: str) -> str {
+    var result = line
+    var i = 0
+    while i < result.len - 1 {
+        if result[i..i + 1] == "\\" && result[i + 1..i + 2] == "\n" {
+            // Found a backslash-newline pair. Replace with a space.
+            // Check if the next character is a tab and skip it.
+            var next = i + 2
+            if next < result.len && result[next..next + 1] == "\t" {
+                next += 1
+            }
+            // Keep the backslash-newline for the shell; drop only the one tab after it
+            result = result[0..i + 2] + result[next..]
+            i += 2
+            continue
+        }
+        i += 1
+    }
+    return result
+}
+
+/// Build a single target's recipe. Returns the result.
+fn build_target(g: Graph, v: Vars, name: str, silent: bool, built: Map[str, int]) -> BuildResult {
+    let node = map.get(g.nodes, name) else {
+        return BuildResult { name: name, success: false, exit_code: 2 }
+    }
+    if !is_out_of_date(g, name, built) {
+        return BuildResult { name: name, success: true, exit_code: 0 }
+    }
+    if node.recipe.len == 0 {
+        return BuildResult { name: name, success: true, exit_code: 0 }
+    }
+    let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
+    let all_prereqs = str.join(" ", node.prereqs)
+    let newer = newer_prereqs(g, name, built)
+    let newer_prereqs_str = str.join(" ", newer)
+    for recipe_line in node.recipe {
+        let expanded = expand(v, recipe_line)
+        let final_line = expand_auto(expanded, name, first_prereq, all_prereqs, newer_prereqs_str)
+        var line = final_line
+        var ignore_errors = false
+        var is_silent = false
+        if line.starts_with("@") {
+            is_silent = true
+            line = line[1..]
+        }
+        if line.starts_with("-") {
+            ignore_errors = true
+            line = line[1..]
+        }
+        if !is_silent && !silent {
+            print(line)
+        }
+        // Apply recipe_for_shell to handle backslash-newline continuations
+        let shell_line = recipe_for_shell(line)
+        let cmd = process.command("sh")
+        process.push_arg(mut cmd, "-c")
+        process.push_arg(mut cmd, shell_line)
+        let exit_code = process.run(cmd) else |e| match e {
+            denied => 126,
+            invalid => 127,
+            io => 126,
+            not_found => 127,
+            signal => 128,
+            unsupported => 127,
+        }
+        if exit_code != 0 && !ignore_errors {
+            eprint("mk: *** [{name}] Error {exit_code}")
+            return BuildResult { name: name, success: false, exit_code: exit_code }
+        }
+        if exit_code != 0 && ignore_errors {
+            eprint("mk: [{name}] Error {exit_code} (ignored)")
+        }
+    }
+    return BuildResult { name: name, success: true, exit_code: 0 }
+}
+
+/// Build a target and its prerequisites recursively (serial mode).
+fn build_recursive(
+    g: Graph,
+    v: Vars,
+    name: str,
+    silent: bool,
+    dry_run: bool,
+    is_goal: bool,
+    keep_going: bool,
+    mut built: Map[str, int],
+    in_progress: str,
+    needed_by: str,
+) -> BuildResult {
+    if map.has(built, name) {
+        return BuildResult { name: name, success: true, exit_code: 0 }
+    }
+    let needle = "\n{name}\n"
+    let found = in_progress.find(needle) else -1
+    if found >= 0 {
+        if needed_by.len > 0 {
+            eprint("mk: Circular {needed_by} <- {name} dependency dropped.")
+        } else {
+            eprint("mk: Circular {name} dependency dropped.")
+        }
+        map.set(mut built, name, -1)
+        return BuildResult { name: name, success: true, exit_code: 0 }
+    }
+    let node = map.get(g.nodes, name) else {
+        // Case 3: no rule, but the file exists — it's a leaf (source file)
+        if fs.exists(name) {
+            // Mark as present but NOT rebuilt (value 0 = not rebuilt in this run)
+            // This allows is_out_of_date to check the mtime comparison
+            map.set(mut built, name, 0)
+            return BuildResult { name: name, success: true, exit_code: 0 }
+        }
+        // Case 2: no rule and does not exist — error
+        if needed_by.len > 0 {
+            eprint("mk: *** No rule to make target `{name}', needed by `{needed_by}'.  Stop.")
+        } else {
+            eprint("mk: *** No rule to make target `{name}'.  Stop.")
+        }
+        return BuildResult { name: name, success: false, exit_code: 2 }
+    }
+    let new_in_progress = "{in_progress}{name}\n"
+    var prereq_failed = false
+    for p in node.prereqs {
+        let result = build_recursive(
+            g,
+            v,
+            p,
+            silent,
+            dry_run,
+            false,
+            keep_going,
+            mut built,
+            new_in_progress,
+            name,
+        )
+        if !result.success {
+            if keep_going {
+                prereq_failed = true
+                continue
+            }
+            return result
+        }
+    }
+    if prereq_failed {
+        return BuildResult { name: name, success: false, exit_code: 2 }
+    }
+    let is_ooo = is_out_of_date(g, name, built)
+    if dry_run {
+        if is_ooo {
+            let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
+            let all_prereqs = str.join(" ", node.prereqs)
+            let newer = newer_prereqs(g, name, built)
+            let newer_prereqs_str = str.join(" ", newer)
+            for recipe_line in node.recipe {
+                let expanded = expand(v, recipe_line)
+                let final_line = expand_auto(
+                    expanded,
+                    name,
+                    first_prereq,
+                    all_prereqs,
+                    newer_prereqs_str,
+                )
+                var line = final_line
+                if line.starts_with("@") { line = line[1..] }
+                if line.starts_with("-") { line = line[1..] }
+                print(line)
+            }
+            map.set(mut built, name, 1)
+        } else if is_goal {
+            if node.recipe.len == 0 {
+                print("mk: Nothing to be done for `{name}'.")
+            } else {
+                print("mk: `{name}' is up to date.")
+            }
+        }
+        return BuildResult { name: name, success: true, exit_code: 0 }
+    }
+    if !is_ooo {
+        if is_goal {
+            if node.recipe.len == 0 {
+                print("mk: Nothing to be done for `{name}'.")
+            } else {
+                print("mk: `{name}' is up to date.")
+            }
+        }
+        return BuildResult { name: name, success: true, exit_code: 0 }
+    }
+    let result = build_target(g, v, name, silent, built)
+    if result.success {
+        map.set(mut built, name, 1)
+    }
+    return result
+}
+
+/// Discover all targets reachable from goals, returning them in topological order.
+fn discover_targets(g: Graph, goals: List[str]) -> List[str] {
+    var order = List[str]()
+    var visited = Map[str, int]()
+    for goal in goals {
+        discover_recursive(g, goal, mut order, mut visited)
+    }
+    return order
+}
+
+fn discover_recursive(g: Graph, name: str, mut order: List[str], mut visited: Map[str, int]) {
+    if map.has(visited, name) {
+        return
+    }
+    map.set(mut visited, name, 1)
+    let node = map.get(g.nodes, name) else {
+        // No rule for this name. If the file exists, it's a leaf target.
+        if fs.exists(name) {
+            (mut order).push(name)
+        }
+        return
+    }
+    for p in node.prereqs {
+        discover_recursive(g, p, mut order, mut visited)
+    }
+    (mut order).push(name)
+}
+
+/// Check if all prerequisites of a target are done (in built map).
+fn prereqs_done(g: Graph, name: str, built: Map[str, int]) -> bool {
+    let node = map.get(g.nodes, name) else {
+        return true
+    }
+    for p in node.prereqs {
+        if !map.has(built, p) {
+            return false
+        }
+    }
+    return true
+}
+
+/// Build the goals. Returns the exit code.
+fn build_goals(
+    g: Graph,
+    v: Vars,
+    mut goals: List[str],
+    silent: bool,
+    dry_run: bool,
+    keep_going: bool,
+    jobs: int,
+) -> int {
+    if goals.len == 0 {
+        if g.order.len > 0 {
+            (mut goals).push(g.order[0])
+        } else {
+            return 0
+        }
+    }
+    // Serial mode: use DFS recursion
+    if jobs <= 1 {
+        return build_goals_serial(g, v, goals, silent, dry_run, keep_going)
+    }
+    // Parallel mode: use ready queue
+    return build_goals_parallel(g, v, goals, silent, dry_run, keep_going, jobs)
+}
+
+/// Serial build using DFS recursion.
+fn build_goals_serial(
+    g: Graph,
+    v: Vars,
+    goals: List[str],
+    silent: bool,
+    dry_run: bool,
+    keep_going: bool,
+) -> int {
+    var built = Map[str, int]()
+    var had_error = false
+    for goal in goals {
+        let result = build_recursive(
+            g,
+            v,
+            goal,
+            silent,
+            dry_run,
+            true,
+            keep_going,
+            mut built,
+            "\n",
+            "",
+        )
+        if !result.success {
+            had_error = true
+            if keep_going {
+                eprint("mk: Target `{goal}' not remade because of errors.")
+                continue
+            }
+            return 2
+        }
+    }
+    if had_error {
+        return 2
+    }
+    return 0
+}
+
+/// Parallel build using ready queue and process.start/poll.
+fn build_goals_parallel(
+    g: Graph,
+    v: Vars,
+    goals: List[str],
+    silent: bool,
+    dry_run: bool,
+    keep_going: bool,
+    jobs: int,
+) -> int {
+    // Discover all targets in topological order
+    let order = discover_targets(g, goals)
+    // Build a set of goal names for quick lookup
+    var goal_set = Map[str, int]()
+    for goal in goals {
+        map.set(mut goal_set, goal, 1)
+    }
+    // built: name -> 1 (rebuilt), 0 (present not rebuilt), -1 (cycle-broken/skipped)
+    var built = Map[str, int]()
+    // in_flight: list of Flight structs for children that are running
+    var in_flight = List[Flight]()
+    // Track which targets have been started
+    var started = Map[str, int]()
+    // Track failed targets
+    var failed = Map[str, int]()
+    // Number of targets to process
+    var total = order.len
+    var done = 0
+
+    while done < total {
+        // If we're at the job limit, wait for a child to finish
+        if in_flight.len >= jobs {
+            let change = process.poll() else |e| match e {
+                io => {
+                    continue
+                },
+            }
+            if !change.changed {
+                // No child has finished yet; loop back to poll again
+                continue
+            }
+            // A child finished. Find which target it was by matching slot.
+            var found_idx = -1
+            var i = 0
+            while i < in_flight.len {
+                if in_flight[i].child.slot == change.child.slot {
+                    found_idx = i
+                    break
+                }
+                i += 1
+            }
+            if found_idx < 0 {
+                continue
+            }
+            // Remove the finished flight (the last element moves into its slot)
+            let flight = (mut in_flight).swap_remove(found_idx)
+            // Get exit code from status
+            let exit_code = process.exit_code(change.status) else 1
+            let success = process.is_exited(change.status) && exit_code == 0
+            if success {
+                map.set(mut built, flight.name, 1)
+            } else {
+                map.set(mut failed, flight.name, 1)
+                eprint("mk: *** [{flight.name}] Error {exit_code}")
+                if !keep_going {
+                    // Kill remaining children
+                    while in_flight.len > 0 {
+                        let f = (mut in_flight).pop() else { break }
+                        process.kill(mut f.child) else |_| {}
+                    }
+                    return 2
+                }
+            }
+            done += 1
+            continue
+        }
+        // Reap any other finished children
+        var poll_again = true
+        while poll_again {
+            let change = process.poll() else |e| match e {
+                io => {
+                    poll_again = false
+                    continue
+                },
+            }
+            if !change.changed {
+                poll_again = false
+                continue
+            }
+            // A child finished. Find which target it was by matching slot.
+            var found_idx = -1
+            var i = 0
+            while i < in_flight.len {
+                if in_flight[i].child.slot == change.child.slot {
+                    found_idx = i
+                    break
+                }
+                i += 1
+            }
+            if found_idx < 0 {
+                continue
+            }
+            // Remove the finished flight (the last element moves into its slot)
+            let flight = (mut in_flight).swap_remove(found_idx)
+            // Get exit code from status
+            let exit_code = process.exit_code(change.status) else 1
+            let success = process.is_exited(change.status) && exit_code == 0
+            if success {
+                map.set(mut built, flight.name, 1)
+            } else {
+                map.set(mut failed, flight.name, 1)
+                eprint("mk: *** [{flight.name}] Error {exit_code}")
+                if !keep_going {
+                    // Kill remaining children
+                    while in_flight.len > 0 {
+                        let f = (mut in_flight).pop() else { break }
+                        process.kill(mut f.child) else |_| {}
+                    }
+                    return 2
+                }
+            }
+            done += 1
+        }
+        // Add ready targets up to the job limit
+        var launched = 0
+        for name in order {
+            if launched >= jobs {
+                break
+            }
+            if map.has(started, name) {
+                continue
+            }
+            // Check if any prereq failed
+            let node = map.get(g.nodes, name) else {
+                // No rule for this name. If it exists, it's a leaf.
+                if fs.exists(name) {
+                    map.set(mut started, name, 1)
+                    // Mark as present but NOT rebuilt (value 0 = not rebuilt in this run)
+                    map.set(mut built, name, 0)
+                    done += 1
+                    continue
+                }
+                // Missing file with no rule — error
+                map.set(mut failed, name, 1)
+                map.set(mut started, name, 1)
+                done += 1
+                if !keep_going {
+                    while in_flight.len > 0 {
+                        let f = (mut in_flight).pop() else { break }
+                        process.kill(mut f.child) else |_| {}
+                    }
+                    return 2
+                }
+                continue
+            }
+            var prereq_failed = false
+            for p in node.prereqs {
+                if map.has(failed, p) {
+                    prereq_failed = true
+                    break
+                }
+            }
+            if prereq_failed {
+                map.set(mut failed, name, 1)
+                map.set(mut started, name, 1)
+                done += 1
+                if !keep_going {
+                    while in_flight.len > 0 {
+                        let f = (mut in_flight).pop() else { break }
+                        process.kill(mut f.child) else |_| {}
+                    }
+                    return 2
+                }
+                continue
+            }
+            // Check if all prereqs are done
+            if !prereqs_done(g, name, built) {
+                continue
+            }
+            // Target is ready. Check if it needs building.
+            if !is_out_of_date(g, name, built) {
+                if map.has(goal_set, name) {
+                    if node.recipe.len == 0 {
+                        print("mk: Nothing to be done for `{name}'.")
+                    } else {
+                        print("mk: `{name}' is up to date.")
+                    }
+                }
+                map.set(mut started, name, 1)
+                // Mark as present but NOT rebuilt (value 0 = not rebuilt in this run)
+                map.set(mut built, name, 0)
+                done += 1
+                continue
+            }
+            if node.recipe.len == 0 {
+                map.set(mut started, name, 1)
+                // Mark as present but NOT rebuilt (value 0 = not rebuilt in this run)
+                map.set(mut built, name, 0)
+                done += 1
+                continue
+            }
+            // Build the target — launch as a background process
+            let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
+            let all_prereqs = str.join(" ", node.prereqs)
+            let newer = newer_prereqs(g, name, built)
+            let newer_prereqs_str = str.join(" ", newer)
+            // Build a script: set -e first; for each line, a printf of the line (unless @ or -s),
+            // then the line alone inside ( : ... ) so a comment, a cd or a continuation stays
+            // inside its own subshell; a - line gets || echo "mk: [NAME] Error $? (ignored)" >&2.
+            var combined = ""
+            for recipe_line in node.recipe {
+                let expanded = expand(v, recipe_line)
+                let final_line = expand_auto(
+                    expanded,
+                    name,
+                    first_prereq,
+                    all_prereqs,
+                    newer_prereqs_str,
+                )
+                var line = final_line
+                var is_silent = false
+                var ignore_errors = false
+                if line.starts_with("@") {
+                    is_silent = true
+                    line = line[1..]
+                }
+                if line.starts_with("-") {
+                    ignore_errors = true
+                    line = line[1..]
+                }
+                // The script prints each line right before running it (as make does, so the
+                // echo and the command's output interleave), runs it in its own subshell so a
+                // `#` comment, a `cd` or a continuation stays inside its line, and stops at the
+                // first failure unless the line was `-` prefixed.
+                let shell_line = recipe_for_shell(line)
+                if combined.len == 0 {
+                    combined = "set -e\n"
+                }
+                if !is_silent && !silent {
+                    let quoted = line.replace("'", "'\\''")
+                    combined = combined + "printf '%s\\n' '" + quoted + "'\n"
+                }
+                if ignore_errors {
+                    combined = combined +
+                        "( :\n" +
+                        shell_line +
+                        "\n) || echo \"mk: [" +
+                        name +
+                        "] Error $? (ignored)\" >&2\n"
+                } else {
+                    combined = combined + "( :\n" + shell_line + "\n)\n"
+                }
+            }
+            let cmd = process.command("sh")
+            process.push_arg(mut cmd, "-c")
+            process.push_arg(mut cmd, combined)
+            let child = process.start(cmd) else |e| match e {
+                denied => {
+                    map.set(mut failed, name, 1)
+                    map.set(mut started, name, 1)
+                    done += 1
+                    continue
+                },
+                invalid => {
+                    map.set(mut failed, name, 1)
+                    map.set(mut started, name, 1)
+                    done += 1
+                    continue
+                },
+                io => {
+                    map.set(mut failed, name, 1)
+                    map.set(mut started, name, 1)
+                    done += 1
+                    continue
+                },
+                not_found => {
+                    map.set(mut failed, name, 1)
+                    map.set(mut started, name, 1)
+                    done += 1
+                    continue
+                },
+                unsupported => {
+                    map.set(mut failed, name, 1)
+                    map.set(mut started, name, 1)
+                    done += 1
+                    continue
+                },
+            }
+            // Add to in_flight
+            (mut in_flight).push(Flight { name: name, child: child })
+            map.set(mut started, name, 1)
+            launched += 1
+        }
+        // If nothing is in flight and nothing is ready, we're stuck
+        if in_flight.len == 0 {
+            var remaining = 0
+            for name in order {
+                if !map.has(started, name) {
+                    remaining += 1
+                }
+            }
+            if remaining > 0 {
+                // Nothing running and nothing ready: an internal error, never a silent success
+                eprint("mk: *** internal error: {remaining} target(s) never became ready")
+                return 2
+            }
+        }
+    }
+    return 0
+}
