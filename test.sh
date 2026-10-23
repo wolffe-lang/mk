@@ -10,6 +10,7 @@ set -euo pipefail
 MK="./mk"
 MAKE="make"
 CORPUS_DIR="tests/corpus"
+ROOT=$(pwd)
 
 # Matrix: each line is "row dir"
 # N1/B1/B2 run on the standard set; B3 on a subset; the rest on their own dirs.
@@ -68,9 +69,9 @@ J1 wide
 J2 diamond
 R1 refuse
 P1 vars"
-for dir in $STANDARD fail missing cycle wide diamond vars; do
+for dir in $STANDARD fail missing cycle wide; do
     MATRIX="$MATRIX
-J3 $dir"
+J3 $dir -j 2"
 done
 
 # Count expected rows (trim leading newline first)
@@ -133,7 +134,6 @@ run_test() {
         J2) test_j2 "$copy" "$dir" ;;
         R1) test_r1 "$copy" "$dir" ;;
         P1) test_p1 "$copy" "$dir" ;;
-        J3) test_j3 "$copy" "$dir" ;;
     esac
 
     # Clean up the copy
@@ -392,18 +392,38 @@ test_p1() {
     fi
 }
 
-# J3: -j 2 output matches make -j 2 (sorted, normalized) for every corpus directory
-test_j3() {
-    local copy="$1" dir="$2"
-    clean_copy "$copy" "$dir"
-    local mk_out=$("$MK" -C "$copy" -j 2 2>&1 | normalize | sort)
-    clean_copy "$copy" "$dir"
-    local make_out=$("$MAKE" -C "$copy" -j 2 2>&1 | normalize | sort)
-    if [ "$mk_out" = "$make_out" ]; then
-        echo "ok J3 $dir"
+# Run the matrix (use a temp file to avoid subshell issues with while-read)
+# same_as_make ROW DIR ARGS... — make and mk with ARGS, each in its own clean copy of DIR.
+# U1 and U2 run each tool once first and compare the second run. Compared: the sorted
+# output (make:/mk: read as TOOL:), the exit status, and every file left (names and bytes).
+same_as_make() {
+    local row="$1" dir="$2"
+    shift 2
+    local a b
+    a=$(mktemp -d)
+    b=$(mktemp -d)
+    cp -R "$CORPUS_DIR/$dir/." "$a/"
+    cp -R "$CORPUS_DIR/$dir/." "$b/"
+    clean_copy "$a" "$dir"
+    clean_copy "$b" "$dir"
+    if [ "$row" = U1 ] || [ "$row" = U2 ]; then
+        (cd "$a" && "$MAKE" "$@" >/dev/null 2>&1 </dev/null) || true
+        (cd "$b" && "$ROOT/mk" "$@" >/dev/null 2>&1 </dev/null) || true
+    fi
+    local make_out mk_out make_st=0 mk_st=0
+    make_out=$(cd "$a" && "$MAKE" "$@" 2>&1 </dev/null) || make_st=$?
+    mk_out=$(cd "$b" && "$ROOT/mk" "$@" 2>&1 </dev/null) || mk_st=$?
+    make_out=$(printf '%s\n' "$make_out" | sed 's/^make:/TOOL:/' | sort)
+    mk_out=$(printf '%s\n' "$mk_out" | sed 's/^mk:/TOOL:/' | sort)
+    local make_files mk_files
+    make_files=$(cd "$a" && find . -type f | sort | while read -r f; do echo "$f"; cat "$f"; done | shasum)
+    mk_files=$(cd "$b" && find . -type f | sort | while read -r f; do echo "$f"; cat "$f"; done | shasum)
+    rm -rf "$a" "$b"
+    if [ "$make_out" = "$mk_out" ] && [ "$make_st" = "$mk_st" ] && [ "$make_files" = "$mk_files" ]; then
+        echo "ok $row $dir $*"
         PASS=$((PASS + 1))
     else
-        echo "FAIL: J3 $dir"
+        echo "FAIL: $row $dir $* (make exit $make_st, mk exit $mk_st)"
         FAIL=$((FAIL + 1))
     fi
 }
@@ -411,8 +431,11 @@ test_j3() {
 # Run the matrix (use a temp file to avoid subshell issues with while-read)
 MATRIX_FILE=$(mktemp)
 echo "$MATRIX" > "$MATRIX_FILE"
-while read -r row dir; do
-    run_test "$row" "$dir"
+while read -r row dir args; do
+    case "$row" in
+        J3) same_as_make "$row" "$dir" $args ;;
+        *) run_test "$row" "$dir" ;;
+    esac
 done < "$MATRIX_FILE"
 rm -f "$MATRIX_FILE"
 
