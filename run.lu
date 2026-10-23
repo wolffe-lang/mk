@@ -243,29 +243,82 @@ fn build_recursive(
 }
 
 /// Discover all targets reachable from goals, returning them in topological order.
-fn discover_targets(g: Graph, goals: List[str]) -> List[str] {
+/// Also detects cycles (back-edges) and prints the circular-dependency message.
+/// Returns a list of names in topological order.
+/// The `dropped` list collects names that were skipped due to cycles.
+fn discover_targets(g: Graph, goals: List[str], mut dropped: List[str]) -> List[str] {
     var order = List[str]()
     var visited = Map[str, int]()
+    // Track the current DFS path for cycle detection.
+    // Each name is stored as "\n{name}\n" so that find() matches the whole name.
+    var in_progress = "\n"
     for goal in goals {
-        discover_recursive(g, goal, mut order, mut visited)
+        discover_recursive(g, goal, mut order, mut visited, in_progress, mut dropped)
     }
     return order
 }
 
-fn discover_recursive(g: Graph, name: str, mut order: List[str], mut visited: Map[str, int]) {
+fn discover_recursive(
+    g: Graph,
+    name: str,
+    mut order: List[str],
+    mut visited: Map[str, int],
+    in_progress: str,
+    mut dropped: List[str],
+) {
+    // Check if this name is on the current DFS path (cycle detection)
+    // This must happen BEFORE the visited check, because a name on the path
+    // is also in visited.
+    let needle = "\n{name}\n"
+    let found = in_progress.find(needle) else -1
+    if found >= 0 {
+        // This is a back-edge: a cycle. Find the name on the path that depends on this one.
+        // The in_progress string contains names separated by \n. Find the last name before
+        // the current position that has `name` as a prereq.
+        var needed_by = ""
+        var i = 0
+        while i < in_progress.len {
+            let start = i
+            let nl = in_progress[i..].find("\n") else break
+            i += nl + 1
+            let candidate = in_progress[start..i - 1]
+            if candidate.len == 0 {
+                continue
+            }
+            let dep_node = map.get(g.nodes, candidate) else {
+                continue
+            }
+            for p in dep_node.prereqs {
+                if p == name {
+                    needed_by = candidate
+                    break
+                }
+            }
+            if needed_by.len > 0 {
+                break
+            }
+        }
+        if needed_by.len > 0 {
+            eprint("mk: Circular {needed_by} <- {name} dependency dropped.")
+        } else {
+            eprint("mk: Circular {name} dependency dropped.")
+        }
+        (mut dropped).push(name)
+        return
+    }
     if map.has(visited, name) {
         return
     }
     map.set(mut visited, name, 1)
     let node = map.get(g.nodes, name) else {
-        // No rule for this name. If the file exists, it's a leaf target.
-        if fs.exists(name) {
-            (mut order).push(name)
-        }
+        // No rule for this name. Add it to the order so the parallel path
+        // can check if it exists (leaf) or print the "No rule" error.
+        (mut order).push(name)
         return
     }
+    let new_in_progress = "{in_progress}{name}\n"
     for p in node.prereqs {
-        discover_recursive(g, p, mut order, mut visited)
+        discover_recursive(g, p, mut order, mut visited, new_in_progress, mut dropped)
     }
     (mut order).push(name)
 }
@@ -358,14 +411,19 @@ fn build_goals_parallel(
     jobs: int,
 ) -> int {
     // Discover all targets in topological order
-    let order = discover_targets(g, goals)
+    var dropped = List[str]()
+    let order = discover_targets(g, goals, mut dropped)
+    // built: name -> 1 (rebuilt), 0 (present not rebuilt), -1 (cycle-broken/skipped)
+    var built = Map[str, int]()
+    // Mark cycle-broken targets as done (value -1) so prereqs_done treats them as done
+    for name in dropped {
+        map.set(mut built, name, -1)
+    }
     // Build a set of goal names for quick lookup
     var goal_set = Map[str, int]()
     for goal in goals {
         map.set(mut goal_set, goal, 1)
     }
-    // built: name -> 1 (rebuilt), 0 (present not rebuilt), -1 (cycle-broken/skipped)
-    var built = Map[str, int]()
     // in_flight: list of Flight structs for children that are running
     var in_flight = List[Flight]()
     // Track which targets have been started
@@ -479,6 +537,13 @@ fn build_goals_parallel(
             if map.has(started, name) {
                 continue
             }
+            // Skip cycle-broken targets (already in built with value -1)
+            let bv = map.get(built, name) else 0
+            if bv < 0 {
+                map.set(mut started, name, 1)
+                done += 1
+                continue
+            }
             // Check if any prereq failed
             let node = map.get(g.nodes, name) else {
                 // No rule for this name. If it exists, it's a leaf.
@@ -489,18 +554,43 @@ fn build_goals_parallel(
                     done += 1
                     continue
                 }
-                // Missing file with no rule — error
+                // Missing file with no rule — error. Print the serial path's message.
+                // Find the "needed by" target: it's the first node in the graph that
+                // depends on this name.
+                var needed_by = ""
+                for n in order {
+                    if map.has(started, n) {
+                        continue
+                    }
+                    let dep_node = map.get(g.nodes, n) else {
+                        continue
+                    }
+                    for p in dep_node.prereqs {
+                        if p == name {
+                            needed_by = n
+                            break
+                        }
+                    }
+                    if needed_by.len > 0 {
+                        break
+                    }
+                }
+                if needed_by.len > 0 {
+                    eprint(
+                        "mk: *** No rule to make target `{name}', needed by `{needed_by}'.  Stop.",
+                    )
+                } else {
+                    eprint("mk: *** No rule to make target `{name}'.  Stop.")
+                }
                 map.set(mut failed, name, 1)
                 map.set(mut started, name, 1)
                 done += 1
-                if !keep_going {
-                    while in_flight.len > 0 {
-                        let f = (mut in_flight).pop() else { break }
-                        process.kill(mut f.child) else |_| {}
-                    }
-                    return 2
+                // Always exit 2 for missing prerequisites, regardless of -k
+                while in_flight.len > 0 {
+                    let f = (mut in_flight).pop() else { break }
+                    process.kill(mut f.child) else |_| {}
                 }
-                continue
+                return 2
             }
             var prereq_failed = false
             for p in node.prereqs {
@@ -542,6 +632,9 @@ fn build_goals_parallel(
                 continue
             }
             if node.recipe.len == 0 {
+                if map.has(goal_set, name) {
+                    print("mk: Nothing to be done for `{name}'.")
+                }
                 map.set(mut started, name, 1)
                 // Mark as present but NOT rebuilt (value 0 = not rebuilt in this run)
                 map.set(mut built, name, 0)
