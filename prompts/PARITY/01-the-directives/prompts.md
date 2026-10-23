@@ -1,6 +1,6 @@
 # Track 01 — the directives (0.3.0)
 
-Read `prompts/PARITY/campaign.md`, "Standing rules", first, then `00-the-oracle/judge.md`. Where the code
+Do `prompts/PARITY/campaign.md`'s "Start of every session" first, `00-the-oracle/judge.md` included. Where the code
 stands after track 00: the oracle is `gmake` 4.4.1, rows are `rows` files, messages are 4.4.1's. The
 Makefile is still read in two passes — `parse_makefile` collects `assignments`, `rules` and `phonies` into a
 `Database`, then `build_vars` makes the `Vars` — and `expand` finds a reference's end with the first `)`.

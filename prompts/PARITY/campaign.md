@@ -13,10 +13,52 @@ the reviewer judges from a fresh clone and the next track opens only on READY.
 longer compared against. Every expected answer in a prompt or a row is pasted from `gmake`, never typed
 from memory, and every difference `mk` keeps on purpose is a named line in the README.
 
+## Background: mk as it stands
+
+`mk` is a `make` written in wolf by wollf-v7sf3, a 27B model, driven through opencode by the prompts in
+`prompts/`: `prompt.md` built it in phases from `SPEC.md` (the specification: what the subset is, the
+corpus, the rows), then `prompt-followup.md`, `prompt-resume.md`, `prompt-final.md`, `prompt-release.md`,
+`prompt-close1.md` … `prompt-close8.md` and `prompt-ship.md` took it to the state a reviewer could judge
+from a fresh clone and publish: `https://github.com/wolffe-lang/mk`, 0.1.0, Apache-2.0, trunk `43da3d0`.
+
+What it does today, in 2,479 lines of wolf, one module, one `main`:
+
+| file | holds |
+|---|---|
+| `main.lu` | `Flags`, `parse_flags` (`-f -C -n -s -k -j [N] -p`, `NAME=VALUE`, goals; usage errors in GNU's words), `build_vars`, `main` |
+| `parse.lu` | `join_continuations`, `strip_comment`, `check_refusal` (the eight refusals by name), `parse_assignment`/`parse_rule`/`parse_phony`, `parse_makefile` → `Database` (assignments, rules, phonies), `print_database` for `-p` |
+| `vars.lu` | `Vars`, `set_var` with the four flavours (`=` `:=` `?=` `+=`), `var_value`, `expand` (`$(X)`, `${X}`, `$$`; the environment as a fallback), `expand_auto` (`$@ $< $^ $?`) |
+| `graph.lu` | `Graph`/`Node`, `build_graph`, `is_out_of_date` (missing, a newer prerequisite by mtime, rebuilt this run, phony), `newer_prereqs` |
+| `run.lu` | `build_goals_serial` (recursive, `-n`/`-s`/`-k`), `build_goals_parallel` (a process table, up to N `sh -c` scripts in flight, the same decisions), the cycle drop |
+| `mk_test.lu` | 42 unit tests (parser, flavours, expansion) |
+| `test.sh` | 94 rows against GNU make: each in a fresh copy of a `tests/corpus/<dir>/`; `same_as_make` compares sorted output, exit status and the files written |
+
+What it refuses, each by name with exit 2: pattern rules, `include`, conditionals, `define`, `.SUFFIXES`,
+order-only prerequisites, double-colon rules, functions. What it does not know at all: built-in rules and
+variables, `vpath`, special targets other than `.PHONY`, target-specific variables, `$(MAKE)` recursion,
+and every option outside the seven above. `SPEC.md` §2 and the README's *The subset* tables are the exact
+line. The campaign crosses it.
+
+How it was built matters for how it is extended. The model writes well inside one function and one file
+and loses the thread when a prompt asks for a whole new file at once or a change in several places with no
+map; it reproduces GNU's messages only when the bytes are in front of it; it trusts its own oracle over the
+real one unless told the real one is the judge. So each prompt below names the functions to touch, pastes
+the bytes to match, keeps the edits small, and ends in a verify it must paste back.
+
+## Start of every session
+
+Before the first prompt of a session, in the project directory:
+
+1. `cp ../../../WOLF-NOTES.md ./WOLF-NOTES.md` (the wolf toolchain as installed; shared by every project
+   here; it is git-ignored, never commit it) and read it fully.
+2. Read `README.md`, `SPEC.md`, `CHANGELOG.md`, and this file's *Standing rules*.
+3. Read the current track's `prompts.md` from the top, and the previous track's `judge.md` if there is one.
+4. `wolf build main.lu -o mk && wolf fmt --check *.lu && wolf test . && ./test.sh | tail -1` must be green
+   before the first edit; if it is not, stop and say so.
+
 ## Standing rules (every prompt, every track)
 
-1. **Read this file's rules before the first prompt of a session**, then the track's `prompts.md` from the
-   top: it says where the previous prompts left the code.
+1. **Start of every session** above, every time: the notes, the README, the spec, this file, the track.
 2. **Edit in place.** Never rewrite a whole file. At most about 60 lines per edit; a new module is a new
    file. The sessions that hung were all rewriting a file in one go.
 3. **Rebuild before every test run:** `wolf build main.lu -o mk`, then `wolf fmt --check *.lu`, `wolf test .`,

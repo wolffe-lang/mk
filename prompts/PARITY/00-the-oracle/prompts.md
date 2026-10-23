@@ -1,6 +1,6 @@
 # Track 00 — the oracle (0.2.0)
 
-Read `prompts/PARITY/campaign.md`, "Standing rules", first. Where the code stands: `mk` 0.1.0 at trunk
+Do `prompts/PARITY/campaign.md`'s "Start of every session" first. Where the code stands: `mk` 0.1.0 at trunk
 `43da3d0`, 2,479 lines of wolf in `main.lu` (flags), `parse.lu` (lines → `Database`), `vars.lu` (`Vars`,
 `expand`), `graph.lu` (`Graph`, `is_out_of_date`), `run.lu` (serial and parallel schedulers). `test.sh` runs
 94 rows against `/usr/bin/make` (3.81). This track changes no feature: it moves the oracle to `gmake` 4.4.1,
