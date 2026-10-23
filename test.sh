@@ -84,7 +84,9 @@ S1 ignore -s
 S1 ignore -s -j 2
 V1 vars A=override
 V1 vars A=override -j 2
-RJ refuse"
+RJ refuse
+J3 wide -j all
+E1 wide"
 
 # Count expected rows (trim leading newline first)
 EXPECTED=$(echo "$MATRIX" | tail -n +2 | wc -l)
@@ -147,6 +149,7 @@ run_test() {
         R1) test_r1 "$copy" "$dir" ;;
         P1) test_p1 "$copy" "$dir" ;;
         RJ) test_rj "$copy" "$dir" ;;
+        E1) test_e1 "$copy" "$dir" ;;
     esac
 
     # Clean up the copy
@@ -403,6 +406,33 @@ test_rj() {
         PASS=$((PASS + 1))
     else
         echo "FAIL: RJ $dir"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# E1: a usage error names its problem on stderr's first line, prints nothing on
+# stdout, and exits 2
+test_e1() {
+    local copy="$1" dir="$2"
+    local pass_all=true
+    local cases="-x|mk: invalid option -- x
+-f|mk: option requires an argument -- f
+-j 0|mk: the \`-j' option requires a positive integral argument"
+    while IFS='|' read -r args want; do
+        local out err first st=0
+        out=$(cd "$copy" && "$ROOT/mk" $args 2>/dev/null </dev/null) || st=$?
+        err=$(cd "$copy" && "$ROOT/mk" $args 2>&1 >/dev/null </dev/null || true)
+        first=$(printf '%s\n' "$err" | head -1)
+        if [ "$st" -ne 2 ] || [ -n "$out" ] || [ "$first" != "$want" ]; then
+            echo "  E1: mk $args: exit $st, first line: $first"
+            pass_all=false
+        fi
+    done <<< "$cases"
+    if $pass_all; then
+        echo "ok E1 $dir"
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: E1 $dir"
         FAIL=$((FAIL + 1))
     fi
 }
