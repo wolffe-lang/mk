@@ -663,6 +663,31 @@ fn build_goals_parallel(
                 done += 1
                 continue
             }
+            // Dry run: print the recipes and do not run anything
+            if dry_run {
+                let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
+                let all_prereqs = str.join(" ", node.prereqs)
+                let newer = newer_prereqs(g, name, built)
+                let newer_prereqs_str = str.join(" ", newer)
+                for recipe_line in node.recipe {
+                    let expanded = expand(v, recipe_line)
+                    let final_line = expand_auto(
+                        expanded,
+                        name,
+                        first_prereq,
+                        all_prereqs,
+                        newer_prereqs_str,
+                    )
+                    var line = final_line
+                    if line.starts_with("@") { line = line[1..] }
+                    if line.starts_with("-") { line = line[1..] }
+                    print(line)
+                }
+                map.set(mut started, name, 1)
+                map.set(mut built, name, 1)
+                done += 1
+                continue
+            }
             // Build the target — launch as a background process
             let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
             let all_prereqs = str.join(" ", node.prereqs)
