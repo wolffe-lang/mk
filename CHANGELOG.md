@@ -35,10 +35,10 @@ Initial release. A `make` for the plain Makefile subset.
 
 - `-k -j` exit status (was 0, now 2)
 - command-line variables while parsing (were lost)
-- ``Nothing to be done`` (was printed for every up-to-date target)
+- ``Nothing to be done`` (was missing for a goal with no recipe)
 - `-s` and `-k` messages, serial and `-j` (were inconsistent)
 - `-n -j` runs nothing (was running recipes)
 - usage errors name the problem (were silent)
-- `-j` without a number sets no limit (was an error)
+- `-j` without a number sets no limit (ran one job at a time)
 - the official licence (was a retyping)
 - `--version` names the wolf it was built with
