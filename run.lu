@@ -165,14 +165,14 @@ fn build_recursive(
         // Case 2: no rule and does not exist — error
         if needed_by.len > 0 {
             if keep_going {
-                eprint("mk: *** No rule to make target `{name}', needed by `{needed_by}'.")
+                eprint("mk: *** No rule to make target '{name}', needed by '{needed_by}'.")
             } else {
-                eprint("mk: *** No rule to make target `{name}', needed by `{needed_by}'.  Stop.")
+                eprint("mk: *** No rule to make target '{name}', needed by '{needed_by}'.  Stop.")
             }
         } else if keep_going {
-            eprint("mk: *** No rule to make target `{name}'.")
+            eprint("mk: *** No rule to make target '{name}'.")
         } else {
-            eprint("mk: *** No rule to make target `{name}'.  Stop.")
+            eprint("mk: *** No rule to make target '{name}'.  Stop.")
         }
         return BuildResult { name: name, success: false, exit_code: 2 }
     }
@@ -226,9 +226,9 @@ fn build_recursive(
             map.set(mut built, name, 1)
         } else if is_goal && !silent {
             if node.recipe.len == 0 {
-                print("mk: Nothing to be done for `{name}'.")
+                print("mk: Nothing to be done for '{name}'.")
             } else {
-                print("mk: `{name}' is up to date.")
+                print("mk: '{name}' is up to date.")
             }
         }
         return BuildResult { name: name, success: true, exit_code: 0 }
@@ -236,9 +236,9 @@ fn build_recursive(
     if !is_ooo {
         if is_goal && !silent {
             if node.recipe.len == 0 {
-                print("mk: Nothing to be done for `{name}'.")
+                print("mk: Nothing to be done for '{name}'.")
             } else {
-                print("mk: `{name}' is up to date.")
+                print("mk: '{name}' is up to date.")
             }
         }
         // Mark as present but NOT rebuilt (value 0 = not rebuilt in this run)
@@ -398,7 +398,7 @@ fn build_goals_serial(
         if !result.success {
             had_error = true
             if keep_going {
-                eprint("mk: Target `{goal}' not remade because of errors.")
+                eprint("mk: Target '{goal}' not remade because of errors.")
                 continue
             }
             return 2
@@ -591,16 +591,16 @@ fn build_goals_parallel(
                 }
                 if needed_by.len > 0 {
                     if keep_going {
-                        eprint("mk: *** No rule to make target `{name}', needed by `{needed_by}'.")
+                        eprint("mk: *** No rule to make target '{name}', needed by '{needed_by}'.")
                     } else {
                         eprint(
-                            "mk: *** No rule to make target `{name}', needed by `{needed_by}'.  Stop.",
+                            "mk: *** No rule to make target '{name}', needed by '{needed_by}'.  Stop.",
                         )
                     }
                 } else if keep_going {
-                    eprint("mk: *** No rule to make target `{name}'.")
+                    eprint("mk: *** No rule to make target '{name}'.")
                 } else {
-                    eprint("mk: *** No rule to make target `{name}'.  Stop.")
+                    eprint("mk: *** No rule to make target '{name}'.  Stop.")
                 }
                 map.set(mut failed, name, 1)
                 map.set(mut started, name, 1)
@@ -650,9 +650,9 @@ fn build_goals_parallel(
             if !is_out_of_date(g, name, built) {
                 if map.has(goal_set, name) && !silent {
                     if node.recipe.len == 0 {
-                        print("mk: Nothing to be done for `{name}'.")
+                        print("mk: Nothing to be done for '{name}'.")
                     } else {
-                        print("mk: `{name}' is up to date.")
+                        print("mk: '{name}' is up to date.")
                     }
                 }
                 map.set(mut started, name, 1)
@@ -808,7 +808,7 @@ fn build_goals_parallel(
     }
     // Print "not remade" messages for failed goals
     for goal in failed_goals {
-        eprint("mk: Target `{goal}' not remade because of errors.")
+        eprint("mk: Target '{goal}' not remade because of errors.")
     }
     // Return 2 if any target failed
     if failed.len > 0 {
