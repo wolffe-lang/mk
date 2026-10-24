@@ -390,8 +390,10 @@ fn run(mut f: Flags) -> int {
             eprint("{f.file}:{l}: *** unterminated variable reference.  Stop.")
             return 2
         },
-        cycle(l) => {
-            eprint("{f.file}:{l}: *** Recursive variable references itself (eventually).  Stop.")
+        cycle(l, n) => {
+            eprint(
+                "{f.file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
+            )
             return 2
         },
     }

@@ -1,1 +1,2 @@
 unterm -f unterm.mk
+self -f self.mk

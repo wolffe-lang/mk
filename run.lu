@@ -101,9 +101,9 @@ fn build_target(
                     prereq_failed: false,
                 }
             },
-            cycle(l) => {
+            cycle(l, n) => {
                 eprint(
-                    "{makefile}:{l}: *** Recursive variable references itself (eventually).  Stop.",
+                    "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                 )
                 return BuildResult {
                     name: name,
@@ -258,9 +258,9 @@ fn build_recursive(
                             prereq_failed: false,
                         }
                     },
-                    cycle(l) => {
+                    cycle(l, n) => {
                         eprint(
-                            "{makefile}:{l}: *** Recursive variable references itself (eventually).  Stop.",
+                            "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                         )
                         return BuildResult {
                             name: name,
@@ -748,8 +748,16 @@ fn build_goals_parallel(
                     let recipe_line = node.recipe[ri]
                     let recipe_line_num = node.first_recipe_line + ri
                     let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
-                        unterminated(l) => recipe_line,
-                        cycle(l) => recipe_line,
+                        unterminated(l) => {
+                            eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                            return 2
+                        },
+                        cycle(l, n) => {
+                            eprint(
+                                "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
+                            )
+                            return 2
+                        },
                     }
                     let final_line = expand_auto(
                         expanded,
@@ -788,9 +796,9 @@ fn build_goals_parallel(
                         eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
                         return 2
                     },
-                    cycle(l) => {
+                    cycle(l, n) => {
                         eprint(
-                            "{makefile}:{l}: *** Recursive variable references itself (eventually).  Stop.",
+                            "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                         )
                         return 2
                     },

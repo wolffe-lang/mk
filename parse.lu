@@ -528,9 +528,9 @@ fn print_database(db: Database, v: Vars, makefile: str) -> !int {
                 eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
                 return 2
             },
-            cycle(l) => {
+            cycle(l, n) => {
                 eprint(
-                    "{makefile}:{l}: *** Recursive variable references itself (eventually).  Stop.",
+                    "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                 )
                 return 2
             },

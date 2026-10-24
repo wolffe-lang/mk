@@ -64,7 +64,7 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
         // := expands immediately
         let expanded = expand(v, value, line) else |e| match e {
             unterminated(l) => value,
-            cycle(l) => value,
+            cycle(l, n) => value,
         }
         map.set(mut v.table, name, Var { value: expanded, flavour: flavour, line: line })
     } else {
