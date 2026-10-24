@@ -99,6 +99,11 @@ A prerequisite with no rule that does not exist is an error:
 - `0` — up to date or built successfully
 - `2` — any error (GNU's convention)
 
+## Known differences from GNU make
+
+- Usage errors print `mk`'s own option list, not GNU make's (`gmake -x` prints 50 lines
+  of options; `mk -x` prints its usage; the first line agrees and the E1 row checks it)
+
 ## Tests
 
 ```
