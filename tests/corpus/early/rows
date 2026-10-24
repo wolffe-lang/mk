@@ -1,0 +1,4 @@
+sep -f bad.mk
+nofile -f nope
+sepC -C . -f bad.mk
+nofileC -C . -f nope
