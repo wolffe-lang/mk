@@ -109,7 +109,7 @@ A prerequisite with no rule that does not exist is an error:
 ```
 wolf build main.lu -o mk
 wolf test .              # 42 unit tests
-./test.sh                # 94 corpus rows against GNU make
+./test.sh                # 100 corpus rows against GNU make
 wolf fmt --check *.lu
 ```
 
@@ -147,7 +147,7 @@ Machine: Apple M5 Pro, macOS, wolf 0.2.34. Date: 2026-10-23.
 | `graph.lu` | Dependency graph, DFS, cycle detection, out-of-date decision |
 | `run.lu` | Scheduler: serial and parallel execution, `-n`/`-s`/`-k` |
 | `mk_test.lu` | Unit tests for the parser and variable flavours |
-| `test.sh` | Corpus tests against GNU make (94 rows) |
+| `test.sh` | Corpus tests against GNU make (100 rows) |
 | `SPEC.md` | The original specification (the prompt that built this) |
 | `CHANGELOG.md` | Version history |
 | `README.md` | this file |
