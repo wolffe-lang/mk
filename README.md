@@ -112,6 +112,11 @@ wolf fmt --check *.lu
 GNU `gmake` on the same Makefile. A row passes when the two tools agree on the observable
 behaviour (output, exit status and the files written). The oracle is GNU make 4.4.1 beside it.
 
+Each corpus directory carries a `rows` file (one row per line; the first word is the row
+name, the rest are the arguments). A name starting with `again` compares the second run
+of each tool. A copy is cleaned to the directory's git-tracked files. The harness finds
+every `tests/corpus/*/rows` and feeds them into the matrix.
+
 The 94 rows cover 12 directories across 19 test kinds: N1 (dry-run output), B1 (files
 after build), B2 (second run), B3 (build from a subset), F1 (failure with `-k`), M1
 (missing target), C1 (cycle), J1 (wide build), J2 (diamond with `-j`), R1 (refusals),

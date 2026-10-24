@@ -6,6 +6,9 @@
 
 - The oracle of record is GNU make 4.4.1 (was 3.81); messages quote `'name'` and recipe
   errors carry `Makefile:line`
+- Rows are files: each corpus directory carries a `rows` file (one row per line, first
+  word the name, rest the arguments; `again…` compares the second run; copies cleaned to
+  tracked files; the harness finds every `tests/corpus/*/rows`)
 
 ## 0.1.0 (2026-10-23)
 
