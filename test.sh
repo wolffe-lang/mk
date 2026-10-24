@@ -75,23 +75,16 @@ J1 wide
 J2 diamond
 R1 refuse
 P1 vars"
-for dir in $STANDARD fail missing cycle wide; do
-    MATRIX="$MATRIX
-J3 $dir -j 2
-U1 $dir
-U2 $dir -j 2
-D1 $dir -n -j 2"
+for rows in "$CORPUS_DIR"/*/rows; do
+    d=$(basename "$(dirname "$rows")")
+    while IFS= read -r line; do
+        case "$line" in ''|'#'*) continue ;; esac
+        MATRIX="$MATRIX
+R $d $line"
+    done < "$rows"
 done
 MATRIX="$MATRIX
-K1 fail -k -j 2
-K1 missing -k
-K1 missing -k -j 2
-S1 ignore -s
-S1 ignore -s -j 2
-V1 vars A=override
-V1 vars A=override -j 2
 RJ refuse
-J3 wide -j all
 E1 wide"
 
 # Count expected rows (trim leading newline first)
@@ -510,7 +503,7 @@ MATRIX_FILE=$(mktemp)
 echo "$MATRIX" > "$MATRIX_FILE"
 while read -r row dir args; do
     case "$row" in
-        J3 | U1 | U2 | D1 | K1 | S1 | V1) same_as_make "$row" "$dir" $args ;;
+        R) set -- $args; same_as_make "$1" "$dir" "${@:2}" ;;
         *) run_test "$row" "$dir" ;;
     esac
 done < "$MATRIX_FILE"
