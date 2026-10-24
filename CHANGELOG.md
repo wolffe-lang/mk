@@ -6,6 +6,10 @@
 
 - Recipe continuations: a continued line keeps its newline and loses one tab;
   the error line number is the first recipe line plus the logical index
+- A line that is not blank, not a comment, not a recipe line, not an assignment,
+  not a rule and not a refusal is a "missing separator" error (exit 2)
+- A `-f` file that cannot be read prints the two gmake lines (exit 2)
+- `-C` prints `Leaving` on every exit, including parse errors and missing files
 
 ## 0.2.0 (2026-10-23)
 
