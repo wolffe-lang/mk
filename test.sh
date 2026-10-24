@@ -109,20 +109,11 @@ normalize() {
 clean_copy() {
     local dir="$1"
     local corpus="$2"
-    case "$corpus" in
-        linear) rm -f "$dir"/a "$dir"/b "$dir"/c ;;
-        diamond) rm -f "$dir"/base "$dir"/left "$dir"/right ;;
-        phony) rm -f "$dir"/prog ;;
-        auto) rm -f "$dir"/a "$dir"/b "$dir"/c "$dir"/d ;;
-        ignore) rm -f "$dir"/result ;;
-        fail) rm -f "$dir"/result "$dir"/other ;;
-        missing) rm -f "$dir"/result ;;
-        cycle) rm -f "$dir"/a "$dir"/b ;;
-        wide) rm -f "$dir"/t[0-9][0-9] ;;
-        leaf) rm -f "$dir"/out1.txt "$dir"/out2.txt ;;
-        vars) rm -f "$dir"/vars.out ;;
-        continuation) rm -f "$dir"/a.txt "$dir"/b.txt "$dir"/c.txt ;;
-    esac
+    local tracked
+    tracked=$(git ls-files "$CORPUS_DIR/$corpus" | sed "s|^$CORPUS_DIR/$corpus/||")
+    (cd "$dir" && find . -type f | sed 's|^\./||' | while read -r f; do
+        printf '%s\n' "$tracked" | grep -qxF "$f" || rm -f "$f"
+    done)
 }
 
 # Run a test in a fresh copy of the corpus
