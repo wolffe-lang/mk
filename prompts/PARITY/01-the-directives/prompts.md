@@ -1,8 +1,10 @@
 # Track 01 — the directives (0.3.0)
 
 Do `prompts/PARITY/campaign.md`'s "Start of every session" first, `00-the-oracle/judge.md` included. Where the code
-stands after track 00: the oracle is `gmake` 4.4.1, rows are `rows` files, messages are 4.4.1's. The
-Makefile is still read in two passes — `parse_makefile` collects `assignments`, `rules` and `phonies` into a
+stands after track 00: the oracle is `gmake` 4.4.1, rows are `rows` files (a directory's inputs are its
+git-tracked files, so **commit a fixture before its row can pass**), messages are 4.4.1's, `parse.lu` carries
+each logical line as `Line { text, line }` and each `Rule` its `first_recipe_line`. The Makefile is still
+read in two passes — `parse_makefile` collects `assignments`, `rules` and `phonies` into a
 `Database`, then `build_vars` makes the `Vars` — and `expand` finds a reference's end with the first `)`.
 This track makes the reader one-pass, the expander real, and lands every directive: `include`, the
 conditionals, `define`, `override`/`export`, and the variables GNU make sets itself. Each refusal line in

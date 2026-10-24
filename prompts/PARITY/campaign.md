@@ -112,4 +112,4 @@ name real functions. `00` and `01` are written now.
 
 | track | opened | judged | verdict |
 |---|---|---|---|
-| 00-the-oracle | 2026-10-23 | | |
+| 00-the-oracle | 2026-10-23 | 2026-10-23 | NOT READY: three probes outside the corpus (continued-recipe line numbers, the continued line's tab, Leaving on early exits + missing separator); P0.4–P0.6 |

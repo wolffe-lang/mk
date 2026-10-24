@@ -82,3 +82,84 @@ directory's git-tracked files, the matrix rows migrated), as five small edits wi
 
 **Verify:** the clone's two result lines; `./mk --version`; `git log --oneline | head -12`. Stop here: the
 reviewer judges the track before `01-the-directives` opens.
+
+## Fix prompts from the judge (read `judge.md` first)
+
+### P0.4 — recipe lines: the number gmake reports, and the continued line's tab
+
+Rows first, red: a directory `tests/corpus/recipes/` with this Makefile (tabs are real tabs) and `rows` of
+`build` and `keep -k`; commit the inputs (`git add` the Makefile and rows: the copy is cleaned to tracked
+files, so an uncommitted fixture vanishes before the row runs), then `rows: recipes (red)`.
+```make
+a:
+	@echo one \
+	 two \
+	 three
+	@true
+	printf "[%s]\n" x \
+		  y \
+	z
+	false \
+	 more
+```
+gmake prints (paste it yourself and compare): the `printf` line echoed as three lines `printf "[%s]\n" x \`,
+`	  y \` (ONE tab), `z` (no tab), then `[x] [y] [z]` on three lines, then `false \` / ` more` echoed, then
+`gmake: *** [Makefile:6: a] Error 1` — 6, because the recipe's first line is physical 2 and `false` is the
+fourth logical recipe line (index 4): **N = first recipe line + logical index**, continuation and blank
+lines not counted.
+
+Then the code, in `parse.lu`:
+1. `join_continuations` already carries each logical line's first physical number. For a recipe line, when
+   joining a continuation, keep the backslash and the newline in the text (gmake hands them to the shell)
+   and drop exactly one leading tab from the continued physical line. Non-recipe lines keep today's join
+   (backslash-newline → one space).
+2. `Rule` gains `first_recipe_line: int` (the physical line of its first recipe line, 0 if none). The error
+   in `run.lu` prints `first_recipe_line + index`, where `index` is the recipe line's position in
+   `rule.recipe` (0-based); `recipe_lines` is then unused — delete it.
+`./test.sh` green with the new rows (`Results: 96`). Commits: `recipes: a continued line keeps its
+newline and loses one tab`, `recipes: the error line is first recipe line + logical index`. CHANGELOG
+`### Fixed` under a new `## Unreleased`.
+
+**Verify:** `./mk -C tests/corpus/recipes 2>&1 | sed "s|$(cd tests/corpus/recipes && pwd -P)|DIR|"` pasted
+beside the same with `gmake`; `./test.sh | tail -1`. Stop.
+
+### P0.5 — every exit under -C says Leaving; missing separator; the missing -f file
+
+Rows first, red: `tests/corpus/early/` with `Makefile` = `all:\n\t@true\n`, `bad.mk` = `all:\nfoo bar\n`,
+and `rows`:
+```
+sep -f bad.mk
+nofile -f nope
+sepC -C . -f bad.mk
+nofileC -C . -f nope
+```
+Commit the inputs, then `rows: early exits (red)`. Expected (paste from gmake, with `gmake:` → `mk:`):
+```
+Makefile:2: *** missing separator.  Stop.            ← bad.mk:2 here, since the file is bad.mk
+mk: nope: No such file or directory
+mk: *** No rule to make target 'nope'.  Stop.
+```
+each exit 2, and under `-C` the `Entering`/`Leaving` lines around them.
+
+The code:
+1. `parse.lu`: a line that is not blank, not a comment, not a recipe line, not an assignment, not a rule
+   and not a refusal is an error: `{file}:{line}: *** missing separator.  Stop.`, exit 2. Give the parse
+   error path the makefile's name (it has the line already).
+2. `main.lu`: a `-f` file that cannot be read prints the two gmake lines above (the name as given), exit 2.
+3. `main.lu`: one exit path. Make `main` compute the status into a variable and fall through to a single
+   place that prints `Leaving` (when `-C` was given) and returns; every `return 2` after `Entering` becomes
+   an assignment and a jump to that place (a `var status`, and the early-exit blocks set it and skip the
+   rest; wolf has no goto, so wrap the middle in a function `run(f) -> int` called once: `let status =
+   run(f)`, then the Leaving line, then `return status`). `-C` to a directory that does not exist: paste
+   gmake's answer (`gmake -C /nonexistent`) and match it, including whether Leaving is printed.
+Commits: `missing separator`, `-f: the missing file's two lines`, `-C: Leaving on every exit`. CHANGELOG
+`### Fixed`.
+
+**Verify:** the four `early` rows `ok`; `./test.sh | tail -1` (100); `./mk -C . -f nope; echo $?` from
+`tests/corpus/early`. Stop.
+
+### P0.6 — close again
+
+fmt/test/test.sh green; `VERSION` `0.2.1`; CHANGELOG `## Unreleased` → `## 0.2.1 (<today>)`; README's row
+count (100) in both places; commit `Release 0.2.1: recipe lines and early exits`; the clone proof as in
+P0.3. Stop for the judge.
