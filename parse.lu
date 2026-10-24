@@ -490,7 +490,7 @@ fn parse_makefile_file(path: str) -> Database ! {parse, Parse(ParseErr), io} {
 ///   \tRECIPE_LINE
 ///   ...
 ///   .PHONY: NAMES
-fn print_database(db: Database, v: Vars) {
+fn print_database(db: Database, v: Vars, makefile: str) -> !int {
     // Collect unique variable names and sort them
     var names = List[str]()
     for a in db.assignments {
@@ -522,9 +522,18 @@ fn print_database(db: Database, v: Vars) {
     print("# Variables")
     for name in names {
         let val = var_value(v, name)
-        let expanded = expand(v, val) else |e| match e {
-            unterminated => val,
-            cycle => val,
+        let line = var_line_of(v, name)
+        let expanded = expand(v, val, line) else |e| match e {
+            unterminated(l) => {
+                eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                return 2
+            },
+            cycle(l) => {
+                eprint(
+                    "{makefile}:{l}: *** Recursive variable references itself (eventually).  Stop.",
+                )
+                return 2
+            },
         }
         print("{name} = {expanded}")
     }
@@ -547,4 +556,5 @@ fn print_database(db: Database, v: Vars) {
         let names = str.join(" ", p.names)
         print(".PHONY: {names}")
     }
+    return 0
 }

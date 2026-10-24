@@ -239,82 +239,82 @@ fn test_var_flavour_append() {
 
 fn test_vars_recursive() {
     let v = new_vars()
-    set_var(mut v, "A", "one", "=")
-    set_var(mut v, "B", "$(A) two", "=")
-    set_var(mut v, "A", "uno", "=")
-    assert((expand(v, "$(B)") else "") == "uno two", "recursive expansion")
+    set_var(mut v, "A", "one", "=", 1)
+    set_var(mut v, "B", "$(A) two", "=", 2)
+    set_var(mut v, "A", "uno", "=", 3)
+    assert((expand(v, "$(B)", 4) else "") == "uno two", "recursive expansion")
 }
 
 fn test_vars_immediate() {
     let v = new_vars()
-    set_var(mut v, "A", "one", "=")
-    set_var(mut v, "B", "$(A) two", ":=")
-    set_var(mut v, "A", "uno", "=")
-    assert((expand(v, "$(B)") else "") == "one two", "immediate expansion")
+    set_var(mut v, "A", "one", "=", 1)
+    set_var(mut v, "B", "$(A) two", ":=", 2)
+    set_var(mut v, "A", "uno", "=", 3)
+    assert((expand(v, "$(B)", 4) else "") == "one two", "immediate expansion")
 }
 
 fn test_vars_conditional() {
     let v = new_vars()
-    set_var(mut v, "C", "three", "?=")
-    set_var(mut v, "C", "nope", "?=")
-    assert((expand(v, "$(C)") else "") == "three", "conditional")
+    set_var(mut v, "C", "three", "?=", 1)
+    set_var(mut v, "C", "nope", "?=", 2)
+    assert((expand(v, "$(C)", 3) else "") == "three", "conditional")
 }
 
 fn test_vars_append() {
     let v = new_vars()
-    set_var(mut v, "D", "x", "=")
-    set_var(mut v, "D", "y", "+=")
-    assert((expand(v, "$(D)") else "") == "x y", "append")
+    set_var(mut v, "D", "x", "=", 1)
+    set_var(mut v, "D", "y", "+=", 2)
+    assert((expand(v, "$(D)", 3) else "") == "x y", "append")
 }
 
 fn test_vars_dollar_dollar() {
     let v = new_vars()
-    set_var(mut v, "E", "$$HOME", ":=")
-    assert((expand(v, "$(E)") else "") == "$HOME", "dollar dollar")
+    set_var(mut v, "E", "$$HOME", ":=", 1)
+    assert((expand(v, "$(E)", 2) else "") == "$HOME", "dollar dollar")
 }
 
 fn test_vars_brace_syntax() {
     let v = new_vars()
-    set_var(mut v, "A", "hello", "=")
-    assert((expand(v, "${{A}}") else "") == "hello", "brace syntax")
+    set_var(mut v, "A", "hello", "=", 1)
+    assert((expand(v, "${{A}}", 2) else "") == "hello", "brace syntax")
 }
 
 fn test_vars_append_immediate() {
     let v = new_vars()
-    set_var(mut v, "A", "one", ":=")
-    set_var(mut v, "A", "two", "+=")
-    assert((expand(v, "$(A)") else "") == "one two", "append immediate")
+    set_var(mut v, "A", "one", ":=", 1)
+    set_var(mut v, "A", "two", "+=", 2)
+    assert((expand(v, "$(A)", 3) else "") == "one two", "append immediate")
 }
 
 fn test_vars_computed_name() {
     let v = new_vars()
-    set_var(mut v, "NAME", "A", "=")
-    set_var(mut v, "A", "hello", "=")
-    assert((expand(v, "$($(NAME))") else "") == "hello", "computed name")
+    set_var(mut v, "NAME", "A", "=", 1)
+    set_var(mut v, "A", "hello", "=", 2)
+    assert((expand(v, "$($(NAME))", 3) else "") == "hello", "computed name")
 }
 
 fn test_vars_nested_ref() {
     let v = new_vars()
-    set_var(mut v, "A", "hello", "=")
-    set_var(mut v, "B", "world", "=")
-    set_var(mut v, "Aworld", "nested", "=")
-    assert((expand(v, "$(A$(B))") else "") == "nested", "nested reference")
+    set_var(mut v, "A", "hello", "=", 1)
+    set_var(mut v, "B", "world", "=", 2)
+    set_var(mut v, "Aworld", "nested", "=", 3)
+    assert((expand(v, "$(A$(B))", 4) else "") == "nested", "nested reference")
 }
 
 fn test_vars_substitution() {
     let v = new_vars()
-    set_var(mut v, "SRC", "a.c b.c", "=")
-    assert((expand(v, "$(SRC:.c=.o)") else "") == "a.o b.o", "substitution reference")
+    set_var(mut v, "SRC", "a.c b.c", "=", 1)
+    assert((expand(v, "$(SRC:.c=.o)", 2) else "") == "a.o b.o", "substitution reference")
 }
 
 fn test_vars_pattern_substitution() {
     let v = new_vars()
-    set_var(mut v, "SRC", "a.c b.c", "=")
-    assert((expand(v, "$(SRC:%.c=%.o)") else "") == "a.o b.o", "pattern substitution")
+    set_var(mut v, "SRC", "a.c b.c", "=", 1)
+    assert((expand(v, "$(SRC:%.c=%.o)", 2) else "") == "a.o b.o", "pattern substitution")
 }
 
 fn test_vars_cycle() {
     let v = new_vars()
-    set_var(mut v, "A", "$(A)", "=")
-    assert((expand(v, "$(A)") else "") == "", "cycle detection")
+    set_var(mut v, "A", "$(A)", "=", 1)
+    assert((expand(v, "$(A)", 2) else "") == "", "cycle detection")
 }

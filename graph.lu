@@ -202,7 +202,7 @@ fn newer_prereqs(g: Graph, name: str, built: Map[str, int]) -> List[str] {
 /// Build the graph from a parsed database.
 /// Variables in prerequisite names are expanded at graph-build time,
 /// so that `all: $(OBJS)` resolves to `all: a.txt b.txt c.txt`.
-fn build_graph(db: Database, v: Vars) -> Graph {
+fn build_graph(db: Database, v: Vars, makefile: str) -> Graph ! {unterminated(int), cycle(int)} {
     var g = new_graph()
     // Build a set of phony names
     var phony_set = Map[str, int]()
@@ -218,9 +218,17 @@ fn build_graph(db: Database, v: Vars) -> Graph {
             // Expand prerequisite names and split on whitespace
             var expanded_prereqs = List[str]()
             for p in r.prereqs {
-                let expanded = expand(v, p) else |e| match e {
-                    unterminated => p,
-                    cycle => p,
+                let expanded = expand(v, p, r.line) else |e| match e {
+                    unterminated(l) => {
+                        eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                        return unterminated(l)
+                    },
+                    cycle(l) => {
+                        eprint(
+                            "{makefile}:{l}: *** Recursive variable references itself (eventually).  Stop.",
+                        )
+                        return cycle(l)
+                    },
                 }
                 // Split on whitespace to handle variables that expand to multiple words
                 for word in expanded.words() {

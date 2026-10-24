@@ -1,4 +1,3 @@
-# unterm.mk — unterminated variable reference
-A = hello(
+A = $(B
 all:
-	@echo $(A)
+	@echo "[$(A)]"

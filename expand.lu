@@ -7,20 +7,23 @@
 //! - Computed names: $(A$(B)) reads variable AB's value when B is B
 //! - Substitution references: $(VAR:.c=.o) and $(VAR:%.c=%.o)
 //! - Function calls: $(foo bar) → "" (routed to call_function)
-//! - Unterminated reference error: expand returns {unterminated}
-//! - Recursive self-reference detection
+//! - Unterminated reference error: expand returns {unterminated(int)} with the line
+//! - Recursive self-reference error: expand returns {cycle(int)} with the line
 
 /// Expand a string, resolving variable references.
-/// Returns {unterminated} if a $( or ${ is not closed.
-/// Returns {cycle} if a variable references itself recursively.
-fn expand(v: Vars, s: str) -> str ! {unterminated, cycle} {
-    expand_inner(v, s, "")
+/// Returns {unterminated(int)} if a $( or ${ is not closed, carrying the line number.
+/// Returns {cycle(int)} if a variable references itself recursively, carrying the line number.
+fn expand(v: Vars, s: str, line: int) -> str ! {unterminated(int), cycle(int)} {
+    expand_inner(v, s, "", line)
 }
 
 /// Expand with a visiting set for cycle detection.
 /// The `visiting` string contains names currently being expanded,
 /// separated by newlines, to detect recursive self-references.
-fn expand_inner(v: Vars, s: str, visiting: str) -> str ! {unterminated, cycle} {
+fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
+    unterminated(int),
+    cycle(int),
+} {
     var result = ""
     var i = 0
     while i < s.len {
@@ -40,16 +43,23 @@ fn expand_inner(v: Vars, s: str, visiting: str) -> str ! {unterminated, cycle} {
                 // $(...) — find matching close paren
                 let rest = s[i + 2..]
                 let found = balanced_close(rest, "(", ")") else {
-                    return unterminated
+                    return unterminated(line)
                 }
                 let inside = rest[0..found]
                 // Expand the inside first (computed names)
-                let expanded_inside = expand_inner(v, inside, visiting) else {
-                    return unterminated
+                let expanded_inside = expand_inner(v, inside, visiting, line) else |e| match e {
+                    unterminated(l) => return unterminated(l),
+                    cycle(l) => return cycle(l),
                 }
                 // Check for substitution reference: $(VAR:.c=.o) or $(VAR:%.c=%.o)
-                let sub_result = try_substitution(v, expanded_inside, visiting) else {
-                    return unterminated
+                let sub_result = try_substitution(
+                    v,
+                    expanded_inside,
+                    visiting,
+                    line,
+                ) else |e| match e {
+                    unterminated(l) => return unterminated(l),
+                    cycle(l) => return cycle(l),
                 }
                 if sub_result.len > 0 {
                     result = result + sub_result
@@ -61,8 +71,9 @@ fn expand_inner(v: Vars, s: str, visiting: str) -> str ! {unterminated, cycle} {
                     result = result + func_result
                 } else {
                     // Simple variable reference
-                    let val = expand_var(v, expanded_inside, visiting) else {
-                        return unterminated
+                    let val = expand_var(v, expanded_inside, visiting) else |e| match e {
+                        unterminated(l) => return unterminated(l),
+                        cycle(l) => return cycle(l),
                     }
                     result = result + val
                 }
@@ -73,16 +84,23 @@ fn expand_inner(v: Vars, s: str, visiting: str) -> str ! {unterminated, cycle} {
                 // ${...} — find matching close brace
                 let rest = s[i + 2..]
                 let found = balanced_close(rest, "{{", "}}") else {
-                    return unterminated
+                    return unterminated(line)
                 }
                 let inside = rest[0..found]
                 // Expand the inside first (computed names)
-                let expanded_inside = expand_inner(v, inside, visiting) else {
-                    return unterminated
+                let expanded_inside = expand_inner(v, inside, visiting, line) else |e| match e {
+                    unterminated(l) => return unterminated(l),
+                    cycle(l) => return cycle(l),
                 }
                 // Check for substitution reference
-                let sub_result = try_substitution(v, expanded_inside, visiting) else {
-                    return unterminated
+                let sub_result = try_substitution(
+                    v,
+                    expanded_inside,
+                    visiting,
+                    line,
+                ) else |e| match e {
+                    unterminated(l) => return unterminated(l),
+                    cycle(l) => return cycle(l),
                 }
                 if sub_result.len > 0 {
                     result = result + sub_result
@@ -92,8 +110,9 @@ fn expand_inner(v: Vars, s: str, visiting: str) -> str ! {unterminated, cycle} {
                     let func_result = call_function(v, expanded_inside, visiting)
                     result = result + func_result
                 } else {
-                    let val = expand_var(v, expanded_inside, visiting) else {
-                        return unterminated
+                    let val = expand_var(v, expanded_inside, visiting) else |e| match e {
+                        unterminated(l) => return unterminated(l),
+                        cycle(l) => return cycle(l),
                     }
                     result = result + val
                 }
@@ -109,8 +128,9 @@ fn expand_inner(v: Vars, s: str, visiting: str) -> str ! {unterminated, cycle} {
                     i += 1
                     continue
                 }
-                let val = expand_var(v, next, visiting) else {
-                    return unterminated
+                let val = expand_var(v, next, visiting) else |e| match e {
+                    unterminated(l) => return unterminated(l),
+                    cycle(l) => return cycle(l),
                 }
                 result = result + val
                 i += 2
@@ -178,31 +198,38 @@ fn is_var_char(c: str) -> bool {
 }
 
 /// Expand a variable reference, with cycle detection.
-/// Returns the expanded value, or {cycle} if a cycle is detected.
-fn expand_var(v: Vars, name: str, visiting: str) -> str ! {unterminated, cycle} {
+/// Returns the expanded value, or {cycle(int)} if a cycle is detected, carrying the line number.
+fn expand_var(v: Vars, name: str, visiting: str) -> str ! {unterminated(int), cycle(int)} {
     // Check if this name is already being visited (cycle detection)
     let needle = "\n{name}\n"
     let found = visiting.find(needle) else -1
     if found >= 0 {
-        // Cycle detected — return error
-        return cycle
+        // Cycle detected — return error with the line of the variable
+        let var_line = var_line_of(v, name)
+        return cycle(var_line)
     }
     // Get the raw value (var_value checks the environment)
     let raw = var_value(v, name)
     if raw.len == 0 {
         return ""
     }
+    // Get the line of this variable
+    let var_line = var_line_of(v, name)
     // Expand the value with the updated visiting set
     let new_visiting = "{visiting}{name}\n"
-    let expanded = expand_inner(v, raw, new_visiting) else {
-        return unterminated
+    let expanded = expand_inner(v, raw, new_visiting, var_line) else |e| match e {
+        unterminated(l) => return unterminated(l),
+        cycle(l) => return cycle(l),
     }
     return expanded
 }
 
 /// Try to apply a substitution reference.
 /// Returns the result if it's a substitution, or "" if it's not.
-fn try_substitution(v: Vars, inside: str, visiting: str) -> str ! {unterminated, cycle} {
+fn try_substitution(v: Vars, inside: str, visiting: str, line: int) -> str ! {
+    unterminated(int),
+    cycle(int),
+} {
     // Check for : form: $(VAR:.c=.o)
     let colon_pos = inside.find(":") else 0
     if colon_pos > 0 {
@@ -215,8 +242,9 @@ fn try_substitution(v: Vars, inside: str, visiting: str) -> str ! {unterminated,
             if eq_pos > 0 {
                 let pattern = rest[0..eq_pos]
                 let replacement = rest[eq_pos + 1..]
-                let val = expand_var(v, var_name, visiting) else {
-                    return unterminated
+                let val = expand_var(v, var_name, visiting) else |e| match e {
+                    unterminated(l) => return unterminated(l),
+                    cycle(l) => return cycle(l),
                 }
                 return apply_pattern_sub(val, pattern, replacement)
             }
@@ -226,8 +254,9 @@ fn try_substitution(v: Vars, inside: str, visiting: str) -> str ! {unterminated,
             if eq_pos > 0 {
                 let from = rest[0..eq_pos]
                 let to = rest[eq_pos + 1..]
-                let val = expand_var(v, var_name, visiting) else {
-                    return unterminated
+                let val = expand_var(v, var_name, visiting) else |e| match e {
+                    unterminated(l) => return unterminated(l),
+                    cycle(l) => return cycle(l),
                 }
                 return apply_simple_sub(val, from, to)
             }

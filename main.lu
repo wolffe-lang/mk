@@ -267,7 +267,7 @@ fn build_vars(db: Database, cli_names: Map[str, int]) -> Vars {
         if map.has(cli_names, a.name) {
             continue
         }
-        set_var(mut v, a.name, a.value, a.op)
+        set_var(mut v, a.name, a.value, a.op, a.line)
     }
     return v
 }
@@ -317,16 +317,18 @@ fn run(mut f: Flags) -> int {
             }
             let name = o[0..eq]
             let value = o[eq + 1..]
-            set_var(mut v, name, value, ":=")
+            set_var(mut v, name, value, ":=", 0)
         }
         // Now process Makefile assignments, skipping CLI names
         for a in db.assignments {
             if map.has(cli_names, a.name) {
                 continue
             }
-            set_var(mut v, a.name, a.value, a.op)
+            set_var(mut v, a.name, a.value, a.op, a.line)
         }
-        print_database(db, v)
+        print_database(db, v, f.file) else |e| {
+            return 2
+        }
         return 0
     }
     // Parse the Makefile
@@ -373,17 +375,26 @@ fn run(mut f: Flags) -> int {
         }
         let name = o[0..eq]
         let value = o[eq + 1..]
-        set_var(mut v, name, value, ":=")
+        set_var(mut v, name, value, ":=", 0)
     }
     // Now process Makefile assignments, skipping CLI names
     for a in db.assignments {
         if map.has(cli_names, a.name) {
             continue
         }
-        set_var(mut v, a.name, a.value, a.op)
+        set_var(mut v, a.name, a.value, a.op, a.line)
     }
     // Build the graph
-    let g = build_graph(db, v)
+    let g = build_graph(db, v, f.file) else |e| match e {
+        unterminated(l) => {
+            eprint("{f.file}:{l}: *** unterminated variable reference.  Stop.")
+            return 2
+        },
+        cycle(l) => {
+            eprint("{f.file}:{l}: *** Recursive variable references itself (eventually).  Stop.")
+            return 2
+        },
+    }
     // Build the goals
     let exit_code = build_goals(
         g,

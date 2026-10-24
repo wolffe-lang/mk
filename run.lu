@@ -91,9 +91,27 @@ fn build_target(
     while i < node.recipe.len {
         let recipe_line = node.recipe[i]
         let recipe_line_num = node.first_recipe_line + i
-        let expanded = expand(v, recipe_line) else |e| match e {
-            unterminated => recipe_line,
-            cycle => recipe_line,
+        let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
+            unterminated(l) => {
+                eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                return BuildResult {
+                    name: name,
+                    success: false,
+                    exit_code: 2,
+                    prereq_failed: false,
+                }
+            },
+            cycle(l) => {
+                eprint(
+                    "{makefile}:{l}: *** Recursive variable references itself (eventually).  Stop.",
+                )
+                return BuildResult {
+                    name: name,
+                    success: false,
+                    exit_code: 2,
+                    prereq_failed: false,
+                }
+            },
         }
         let final_line = expand_auto(expanded, name, first_prereq, all_prereqs, newer_prereqs_str)
         var line = final_line
@@ -226,10 +244,31 @@ fn build_recursive(
             let all_prereqs = str.join(" ", node.prereqs)
             let newer = newer_prereqs(g, name, built)
             let newer_prereqs_str = str.join(" ", newer)
-            for recipe_line in node.recipe {
-                let expanded = expand(v, recipe_line) else |e| match e {
-                    unterminated => recipe_line,
-                    cycle => recipe_line,
+            var ri = 0
+            while ri < node.recipe.len {
+                let recipe_line = node.recipe[ri]
+                let recipe_line_num = node.first_recipe_line + ri
+                let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
+                    unterminated(l) => {
+                        eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                        return BuildResult {
+                            name: name,
+                            success: false,
+                            exit_code: 2,
+                            prereq_failed: false,
+                        }
+                    },
+                    cycle(l) => {
+                        eprint(
+                            "{makefile}:{l}: *** Recursive variable references itself (eventually).  Stop.",
+                        )
+                        return BuildResult {
+                            name: name,
+                            success: false,
+                            exit_code: 2,
+                            prereq_failed: false,
+                        }
+                    },
                 }
                 let final_line = expand_auto(
                     expanded,
@@ -243,6 +282,7 @@ fn build_recursive(
                 if line.starts_with("-") { line = line[1..] }
                 let shell_line = recipe_for_shell(line)
                 print(shell_line)
+                ri += 1
             }
             map.set(mut built, name, 1)
         } else if is_goal && !silent {
@@ -703,10 +743,13 @@ fn build_goals_parallel(
                 let all_prereqs = str.join(" ", node.prereqs)
                 let newer = newer_prereqs(g, name, built)
                 let newer_prereqs_str = str.join(" ", newer)
-                for recipe_line in node.recipe {
-                    let expanded = expand(v, recipe_line) else |e| match e {
-                        unterminated => recipe_line,
-                        cycle => recipe_line,
+                var ri = 0
+                while ri < node.recipe.len {
+                    let recipe_line = node.recipe[ri]
+                    let recipe_line_num = node.first_recipe_line + ri
+                    let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
+                        unterminated(l) => recipe_line,
+                        cycle(l) => recipe_line,
                     }
                     let final_line = expand_auto(
                         expanded,
@@ -720,6 +763,7 @@ fn build_goals_parallel(
                     if line.starts_with("-") { line = line[1..] }
                     let shell_line = recipe_for_shell(line)
                     print(shell_line)
+                    ri += 1
                 }
                 map.set(mut started, name, 1)
                 map.set(mut built, name, 1)
@@ -739,9 +783,17 @@ fn build_goals_parallel(
             while ri < node.recipe.len {
                 let recipe_line = node.recipe[ri]
                 let recipe_line_num = node.first_recipe_line + ri
-                let expanded = expand(v, recipe_line) else |e| match e {
-                    unterminated => recipe_line,
-                    cycle => recipe_line,
+                let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
+                    unterminated(l) => {
+                        eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                        return 2
+                    },
+                    cycle(l) => {
+                        eprint(
+                            "{makefile}:{l}: *** Recursive variable references itself (eventually).  Stop.",
+                        )
+                        return 2
+                    },
                 }
                 let final_line = expand_auto(
                     expanded,

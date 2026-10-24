@@ -20,10 +20,11 @@ use std.str
 use std.env
 use std.map
 
-/// A variable with its value and flavour.
+/// A variable with its value, flavour, and the line it was defined on.
 struct Var {
     value: str,
     flavour: str,
+    line: int,
 }
 
 /// The variable table.
@@ -42,43 +43,43 @@ fn new_vars() -> Vars {
 /// If `skip_if_set` is true and the name is already in the table, the assignment is a no-op.
 /// This is used for command-line overrides: a Makefile assignment to a command-line name
 /// is ignored, so the command-line value wins even for `:=` assignments.
-fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, skip_if_set: bool) {
+fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, skip_if_set: bool) {
     if skip_if_set && map.has(v.table, name) {
         // This name was set from the command line; ignore the Makefile assignment
         return
     }
     if flavour == "?=" {
         if !map.has(v.table, name) {
-            map.set(mut v.table, name, Var { value: value, flavour: flavour })
+            map.set(mut v.table, name, Var { value: value, flavour: flavour, line: line })
         }
     } else if flavour == "+=" {
         if map.has(v.table, name) {
             let existing = var_value(v, name)
             let new_value = existing + " " + value
-            map.set(mut v.table, name, Var { value: new_value, flavour: "=" })
+            map.set(mut v.table, name, Var { value: new_value, flavour: "=", line: line })
         } else {
-            map.set(mut v.table, name, Var { value: value, flavour: "=" })
+            map.set(mut v.table, name, Var { value: value, flavour: "=", line: line })
         }
     } else if flavour == ":=" {
         // := expands immediately
-        let expanded = expand(v, value) else |e| match e {
-            unterminated => value,
-            cycle => value,
+        let expanded = expand(v, value, line) else |e| match e {
+            unterminated(l) => value,
+            cycle(l) => value,
         }
-        map.set(mut v.table, name, Var { value: expanded, flavour: flavour })
+        map.set(mut v.table, name, Var { value: expanded, flavour: flavour, line: line })
     } else {
-        map.set(mut v.table, name, Var { value: value, flavour: flavour })
+        map.set(mut v.table, name, Var { value: value, flavour: flavour, line: line })
     }
 }
 
 /// Set a variable with a given flavour (skip_if_set = false).
-fn set_var(mut v: Vars, name: str, value: str, flavour: str) {
-    set_var_impl(mut v, name, value, flavour, false)
+fn set_var(mut v: Vars, name: str, value: str, flavour: str, line: int) {
+    set_var_impl(mut v, name, value, flavour, line, false)
 }
 
 /// Set a variable with a given flavour, skipping if already set.
-fn set_var_skip(mut v: Vars, name: str, value: str, flavour: str) {
-    set_var_impl(mut v, name, value, flavour, true)
+fn set_var_skip(mut v: Vars, name: str, value: str, flavour: str, line: int) {
+    set_var_impl(mut v, name, value, flavour, line, true)
 }
 
 /// Get a variable's value, or empty string if not found.
@@ -90,6 +91,14 @@ fn var_value(v: Vars, name: str) -> str {
         return env_val
     }
     return val.value
+}
+
+/// Get the line number of a variable, or 0 if not found.
+fn var_line_of(v: Vars, name: str) -> int {
+    let val = map.get(v.table, name) else {
+        return 0
+    }
+    return val.line
 }
 
 /// Expand automatic variables in a string.
