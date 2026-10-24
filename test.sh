@@ -477,12 +477,12 @@ same_as_make() {
     clean_copy "$a" "$dir"
     clean_copy "$b" "$dir"
     case "$row" in U1|U2|again*) ;; *) false ;; esac && {
-        (cd "$a" && env "${envs[@]}" "$MAKE" "$@" >/dev/null 2>&1 </dev/null) || true
-        (cd "$b" && env "${envs[@]}" "$ROOT/mk" "$@" >/dev/null 2>&1 </dev/null) || true
+        (cd "$a" && env ${envs[@]+"${envs[@]}"} "$MAKE" "$@" >/dev/null 2>&1 </dev/null) || true
+        (cd "$b" && env ${envs[@]+"${envs[@]}"} "$ROOT/mk" "$@" >/dev/null 2>&1 </dev/null) || true
     }
     local make_out mk_out make_st=0 mk_st=0
-    make_out=$(cd "$a" && env "${envs[@]}" "$MAKE" "$@" 2>&1 </dev/null) || make_st=$?
-    mk_out=$(cd "$b" && env "${envs[@]}" "$ROOT/mk" "$@" 2>&1 </dev/null) || mk_st=$?
+    make_out=$(cd "$a" && env ${envs[@]+"${envs[@]}"} "$MAKE" "$@" 2>&1 </dev/null) || make_st=$?
+    mk_out=$(cd "$b" && env ${envs[@]+"${envs[@]}"} "$ROOT/mk" "$@" 2>&1 </dev/null) || mk_st=$?
     # Replace each tool's own copy path with DIR so paths from different temp dirs compare equal
     # gmake prints the physical path (pwd -P), mk prints env.cwd() (also physical)
     local a_real b_real
