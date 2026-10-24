@@ -269,8 +269,11 @@ fn test_vars_append() {
 
 fn test_vars_dollar_dollar() {
     let v = new_vars()
-    set_var(mut v, "E", "$$HOME", ":=", 1)
-    assert((expand(v, "$(E)", 2) else "") == "$HOME", "dollar dollar")
+    // $$ expands to $, and the next character is plain text (never re-scanned)
+    set_var(mut v, "E", "$$X", ":=", 1)
+    assert((expand(v, "$(E)", 2) else "") == "$X", "dollar dollar immediate")
+    set_var(mut v, "F", "$$X", "=", 3)
+    assert((expand(v, "$(F)", 4) else "") == "$X", "dollar dollar recursive")
 }
 
 fn test_vars_brace_syntax() {
@@ -317,4 +320,10 @@ fn test_vars_cycle() {
     let v = new_vars()
     set_var(mut v, "A", "$(A)", "=", 1)
     assert((expand(v, "$(A)", 2) else "") == "", "cycle detection")
+}
+
+fn test_vars_single_char_followed_by_text() {
+    let v = new_vars()
+    set_var(mut v, "x", "one", "=", 1)
+    assert((expand(v, "$xy", 2) else "") == "oney", "$x followed by text")
 }

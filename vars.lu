@@ -101,6 +101,14 @@ fn var_line_of(v: Vars, name: str) -> int {
     return val.line
 }
 
+/// Get the flavour of a variable, or empty string if not found.
+fn var_flavour(v: Vars, name: str) -> str {
+    let val = map.get(v.table, name) else {
+        return ""
+    }
+    return val.flavour
+}
+
 /// Expand automatic variables in a string.
 fn expand_auto(
     s: str,

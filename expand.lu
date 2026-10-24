@@ -122,13 +122,6 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
             }
             // $x — single character variable reference
             if is_var_char(next) {
-                // Check if the next character is also a var char — if so, don't expand
-                if i + 2 < s.len && is_var_char(s[i + 2..i + 3]) {
-                    // Multi-character after $, not a valid reference
-                    result = result + "$"
-                    i += 1
-                    continue
-                }
                 let val = expand_var(v, next, visiting) else |e| match e {
                     unterminated(l) => return unterminated(l),
                     cycle(l, n) => return cycle(l, n),
@@ -217,6 +210,12 @@ fn expand_var(v: Vars, name: str, visiting: str) -> str ! {unterminated(int), cy
     }
     // Get the line of this variable
     let var_line = var_line_of(v, name)
+    // If the variable is := (immediate), the value is already expanded; return it as-is.
+    // Otherwise, expand it.
+    let flavour = var_flavour(v, name)
+    if flavour == ":=" {
+        return raw
+    }
     // Expand the value with the updated visiting set
     let new_visiting = "{visiting}{name}\n"
     let expanded = expand_inner(v, raw, new_visiting, var_line) else |e| match e {

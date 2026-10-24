@@ -523,17 +523,24 @@ fn print_database(db: Database, v: Vars, makefile: str) -> !int {
     for name in names {
         let val = var_value(v, name)
         let line = var_line_of(v, name)
-        let expanded = expand(v, val, line) else |e| match e {
-            unterminated(l) => {
-                eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
-                return 2
-            },
-            cycle(l, n) => {
-                eprint(
-                    "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
-                )
-                return 2
-            },
+        let flavour = var_flavour(v, name)
+        // := values are already expanded; print them as-is.
+        // = values need to be expanded.
+        let expanded = if flavour == ":=" {
+            val
+        } else {
+            expand(v, val, line) else |e| match e {
+                unterminated(l) => {
+                    eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                    return 2
+                },
+                cycle(l, n) => {
+                    eprint(
+                        "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
+                    )
+                    return 2
+                },
+            }
         }
         print("{name} = {expanded}")
     }
