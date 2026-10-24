@@ -80,7 +80,7 @@ fn test_check_refusal_include() {
 }
 
 fn test_check_refusal_ifeq() {
-    assert(check_refusal("ifeq (1,2)").len > 0, "ifeq refused")
+    assert(check_refusal("ifeq (1,2)").len == 0, "ifeq is accepted")
 }
 
 fn test_check_refusal_define() {

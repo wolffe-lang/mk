@@ -37,6 +37,16 @@ struct Include {
     line: int,
 }
 
+/// A conditional stack entry.
+struct CondEntry {
+    // The line number of the ifeq/ifdef/etc.
+    line: int,
+    // Whether lines are currently live (true = in the active branch)
+    live: bool,
+    // Whether an else has been seen in this conditional
+    else_seen: bool,
+}
+
 /// A refusal to parse a construct.
 struct Refusal {
     kind: str,
@@ -197,13 +207,6 @@ fn check_refusal(line: str) -> str {
     // Pattern rules: contain % in the target
     if line.contains("%") {
         return "pattern rules are not supported"
-    }
-    // ifeq/ifdef/ifndef/else/endif
-    if line.starts_with("ifeq") || line.starts_with("ifdef") || line.starts_with("ifndef") {
-        return "conditional directives are not supported"
-    }
-    if line.starts_with("else") || line.starts_with("endif") {
-        return "conditional directives are not supported"
     }
     // define/endef
     if line.starts_with("define ") || line.starts_with("endef") {
@@ -368,6 +371,158 @@ fn parse_include(line: str, line_num: int) -> Include ! {none} {
     }
 }
 
+/// Parse a conditional directive. Returns the kind, or empty if it's not a conditional.
+fn parse_conditional(line: str) -> str {
+    if line == "else" {
+        return "else"
+    }
+    if line == "endif" {
+        return "endif"
+    }
+    if line.starts_with("ifeq") {
+        return "ifeq"
+    }
+    if line.starts_with("ifneq") {
+        return "ifneq"
+    }
+    if line.starts_with("ifdef") {
+        return "ifdef"
+    }
+    if line.starts_with("ifndef") {
+        return "ifndef"
+    }
+    return ""
+}
+
+/// Evaluate a conditional expression.
+/// `ifeq (a,b)` or `ifeq "a" "b"` or `ifeq 'a' 'b'`
+/// Returns true if the condition is true.
+fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
+    parse,
+    Parse(ParseErr),
+} {
+    if kind == "ifdef" || kind == "ifndef" {
+        // Extract the variable name
+        let name = if kind == "ifdef" {
+            line[5..].trim()
+        } else {
+            line[7..].trim()
+        }
+        // Expand the name
+        let expanded = expand(v, name, line_num) else |e| match e {
+            unterminated(l) => return parse,
+            cycle(l, n) => return parse,
+        }
+        // Check if the variable has a non-empty value
+        let val = var_value(v, expanded)
+        let is_set = val.len > 0
+        if kind == "ifndef" {
+            return !is_set
+        }
+        return is_set
+    }
+    // ifeq or ifneq
+    // Parse the arguments: (a,b) or "a" "b" or 'a' 'b'
+    let rest = if kind == "ifeq" {
+        line[4..].trim()
+    } else {
+        line[6..].trim()
+    }
+    // Check for (a,b) syntax
+    if rest.starts_with("(") {
+        let close = rest.rfind(")") else 0
+        if close <= 0 {
+            return Parse(ParseErr {
+                file: "",
+                line: line_num,
+                message: "invalid syntax in conditional",
+            })
+        }
+        let inner = rest[1..close]
+        // Split on the first comma
+        let comma = inner.find(",") else 0
+        if comma <= 0 {
+            return Parse(ParseErr {
+                file: "",
+                line: line_num,
+                message: "invalid syntax in conditional",
+            })
+        }
+        let left = inner[0..comma].trim()
+        let right = inner[comma + 1..].trim()
+        // Expand both sides
+        let left_expanded = expand(v, left, line_num) else |e| match e {
+            unterminated(l) => return parse,
+            cycle(l, n) => return parse,
+        }
+        let right_expanded = expand(v, right, line_num) else |e| match e {
+            unterminated(l) => return parse,
+            cycle(l, n) => return parse,
+        }
+        // Compare after stripping whitespace
+        let left_trimmed = left_expanded.trim()
+        let right_trimmed = right_expanded.trim()
+        if kind == "ifneq" {
+            return left_trimmed != right_trimmed
+        }
+        return left_trimmed == right_trimmed
+    }
+    // Check for "a" "b" or 'a' 'b' syntax
+    if rest.starts_with("\"") || rest.starts_with("'") {
+        let quote = rest[0..1]
+        // Find the closing quote for the first argument
+        let close1 = rest.find(quote) else 0
+        if close1 <= 1 {
+            return Parse(ParseErr {
+                file: "",
+                line: line_num,
+                message: "invalid syntax in conditional",
+            })
+        }
+        let left = rest[1..close1]
+        // Skip whitespace and find the second quote
+        let rest2 = rest[close1 + 1..].trim()
+        if !rest2.starts_with(quote) {
+            return Parse(ParseErr {
+                file: "",
+                line: line_num,
+                message: "invalid syntax in conditional",
+            })
+        }
+        let close2 = rest2.find(quote) else 0
+        if close2 <= 1 {
+            return Parse(ParseErr {
+                file: "",
+                line: line_num,
+                message: "invalid syntax in conditional",
+            })
+        }
+        let right = rest2[1..close2]
+        // Expand both sides
+        let left_expanded = expand(v, left, line_num) else |e| match e {
+            unterminated(l) => return parse,
+            cycle(l, n) => return parse,
+        }
+        let right_expanded = expand(v, right, line_num) else |e| match e {
+            unterminated(l) => return parse,
+            cycle(l, n) => return parse,
+        }
+        // Compare after stripping whitespace
+        let left_trimmed = left_expanded.trim()
+        let right_trimmed = right_expanded.trim()
+        if kind == "ifneq" {
+            return left_trimmed != right_trimmed
+        }
+        return left_trimmed == right_trimmed
+    }
+    // Invalid syntax
+    return Parse(ParseErr {
+        file: "",
+        line: line_num,
+        message: "invalid syntax in conditional",
+    })
+}
+
 /// Parse a Makefile from text. Returns the database.
 /// `file` is the filename for error messages.
 /// `include_dirs` is the list of -I directories to search for included files.
@@ -402,6 +557,8 @@ fn parse_makefile(
         first_recipe_line: 0,
         line: 0,
     }
+    // Conditional stack: each entry tracks whether lines are live
+    var cond_stack = List[CondEntry]()
     while line_num < logical_lines.len {
         let line = logical_lines[line_num].text
         let line_number = logical_lines[line_num].line
@@ -459,6 +616,85 @@ fn parse_makefile(
                 kind: refusal,
                 line: line_number,
             })
+            line_num += 1
+            continue
+        }
+
+        // Check for conditional directives
+        let cond_kind = parse_conditional(stripped)
+        if cond_kind.len > 0 {
+            // Handle conditional directives
+            if cond_kind == "else" {
+                // Check if we're in a conditional
+                if cond_stack.len == 0 {
+                    // Extraneous else
+                    eprint("{file}:{line_number}: *** extraneous 'else'.  Stop.")
+                    return parse
+                }
+                // Check if else has already been seen
+                let top_idx = cond_stack.len - 1
+                if cond_stack[top_idx].else_seen {
+                    // Two else in one conditional
+                    eprint("{file}:{line_number}: *** only one 'else' per conditional.  Stop.")
+                    return parse
+                }
+                // Flip the live flag
+                var entry = cond_stack[top_idx]
+                entry.live = !entry.live
+                entry.else_seen = true
+                cond_stack[top_idx] = entry
+                line_num += 1
+                continue
+            }
+            if cond_kind == "endif" {
+                // Check if we're in a conditional
+                if cond_stack.len == 0 {
+                    // Extraneous endif (treat as missing endif error)
+                    eprint("{file}:{line_number}: *** missing 'endif'.  Stop.")
+                    return parse
+                }
+                // Pop the stack
+                var tmp = List[CondEntry]()
+                var i = 0
+                while i < cond_stack.len - 1 {
+                    (mut tmp).push(cond_stack[i])
+                    i += 1
+                }
+                cond_stack = tmp
+                line_num += 1
+                continue
+            }
+            // ifeq, ifneq, ifdef, ifndef
+            // Evaluate the conditional
+            let result = eval_conditional(v, stripped, cond_kind, line_number) else |e| match e {
+                parse => {
+                    eprint("{file}:{line_number}: *** invalid syntax in conditional.  Stop.")
+                    return parse
+                },
+                Parse(p) => {
+                    eprint("{file}:{line_number}: *** {p.message}.  Stop.")
+                    return parse
+                },
+            }
+            // Push onto the stack
+            (mut cond_stack).push(CondEntry {
+                line: line_number,
+                live: result,
+                else_seen: false,
+            })
+            line_num += 1
+            continue
+        }
+
+        // Check if lines are live (based on the conditional stack)
+        var is_live = true
+        if cond_stack.len > 0 {
+            // Check the top of the stack
+            let top_idx = cond_stack.len - 1
+            is_live = cond_stack[top_idx].live
+        }
+        // If not live, skip this line
+        if !is_live {
             line_num += 1
             continue
         }
@@ -605,6 +841,14 @@ fn parse_makefile(
     // Save the last rule if any
     if has_rule {
         (mut db.rules).push(current_rule)
+    }
+
+    // Check for open conditionals (missing endif)
+    if cond_stack.len > 0 {
+        // The error line is the last line + 1
+        let last_line = logical_lines[logical_lines.len - 1].line
+        eprint("{file}:{last_line + 1}: *** missing 'endif'.  Stop.")
+        return parse
     }
 
     return db
