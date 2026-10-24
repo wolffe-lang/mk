@@ -53,19 +53,18 @@ fn expand_inner(v: Vars, s: str, visiting: str) -> str ! {unterminated, cycle} {
                 }
                 if sub_result.len > 0 {
                     result = result + sub_result
+                } else
+                // Check if it's a function call (contains whitespace)
+                if is_whitespace(expanded_inside) {
+                    // Function call — route to call_function
+                    let func_result = call_function(v, expanded_inside, visiting)
+                    result = result + func_result
                 } else {
-                    // Check if it's a function call (contains whitespace)
-                    if is_whitespace(expanded_inside) {
-                        // Function call — route to call_function
-                        let func_result = call_function(v, expanded_inside, visiting)
-                        result = result + func_result
-                    } else {
-                        // Simple variable reference
-                        let val = expand_var(v, expanded_inside, visiting) else {
-                            return unterminated
-                        }
-                        result = result + val
+                    // Simple variable reference
+                    let val = expand_var(v, expanded_inside, visiting) else {
+                        return unterminated
                     }
+                    result = result + val
                 }
                 i = i + 2 + found + 1
                 continue
@@ -87,17 +86,16 @@ fn expand_inner(v: Vars, s: str, visiting: str) -> str ! {unterminated, cycle} {
                 }
                 if sub_result.len > 0 {
                     result = result + sub_result
+                } else
+                // Check if it's a function call (contains whitespace)
+                if is_whitespace(expanded_inside) {
+                    let func_result = call_function(v, expanded_inside, visiting)
+                    result = result + func_result
                 } else {
-                    // Check if it's a function call (contains whitespace)
-                    if is_whitespace(expanded_inside) {
-                        let func_result = call_function(v, expanded_inside, visiting)
-                        result = result + func_result
-                    } else {
-                        let val = expand_var(v, expanded_inside, visiting) else {
-                            return unterminated
-                        }
-                        result = result + val
+                    let val = expand_var(v, expanded_inside, visiting) else {
+                        return unterminated
                     }
+                    result = result + val
                 }
                 i = i + 2 + found + 1
                 continue
