@@ -21,6 +21,10 @@
 - `expand` moved from `vars.lu` to `expand.lu` with a new error row `{unterminated, cycle}`
 - `vars.lu` now imports from `expand.lu` and delegates expansion
 - `parse.lu`, `run.lu`, `graph.lu` handle the new `expand` error row
+- `parse_makefile` now takes `mut v: Vars` and `cli_names` and applies assignments as they're read,
+  giving correct order-dependent behavior (`A := $(B)` before `B = 1` makes `A` empty)
+- `+=` keeps the flavour: append to `:=` expands the value, append to `=` stores text
+- `build_vars` is deleted from `main.lu`
 - README updated with new accepted constructs and test counts (47 unit tests, 102 corpus rows)
 
 ## 0.2.1 (2026-10-23)
