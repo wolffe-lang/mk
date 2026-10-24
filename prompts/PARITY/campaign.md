@@ -128,4 +128,5 @@ name real functions. `00` and `01` are written now.
 
 | track | opened | judged | verdict |
 |---|---|---|---|
-| 00-the-oracle | 2026-10-23 | 2026-10-23 | NOT READY: three probes outside the corpus (continued-recipe line numbers, the continued line's tab, Leaving on early exits + missing separator); P0.4–P0.6 |
+| 00-the-oracle | 2026-10-23 | 2026-10-23, 2026-10-24 | NOT READY on 2026-10-23 (three probes outside the corpus; P0.4–P0.6); **READY** on 2026-10-24 at `5942bdd` (0.2.1): 100/100, the three probes agree (`00-the-oracle/judge.md`) |
+| 01-the-directives | 2026-10-24 | P1.1 judged 2026-10-24 | P1.1 **NOT READY**: nothing committed, fmt red, unterminated and self-referencing variables not GNU's error, `$xy`, `sh` vs `/bin/sh`, an unasked 0.2.2 (`01-the-directives/judge-P1.1.md`, fix prompt P1.1b) |
