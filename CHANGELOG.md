@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.2 (2026-10-24)
+## Unreleased
 
 ### Added
 
@@ -11,6 +11,7 @@
 - Pattern substitution: `$(VAR:%.c=%.o)` where `%` matches any run of characters
 - Cycle detection: a variable referencing itself recursively returns empty
 - `var_value` checks the environment for variables not in the table
+- Environment variables are looked up when a Makefile variable is undefined (`FOO=bar mk` sees `$(FOO)`)
 - `tests/corpus/expand/` — exercises all expansion forms
 - `tests/corpus/expand-bad/` — error cases (unterminated references)
 - 5 new unit tests: computed names, nested references, substitution, pattern substitution, cycle detection
