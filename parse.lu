@@ -5,6 +5,7 @@
 
 use std.fs
 use std.str
+use std.map
 
 /// A parsed assignment: NAME op VALUE.
 struct Assignment {
@@ -338,7 +339,10 @@ fn parse_phony(line: str, line_num: int) -> Phony ! {none} {
 
 /// Parse a Makefile from text. Returns the database.
 /// `file` is the filename for error messages.
-fn parse_makefile(text: str, file: str) -> Database ! {parse, Parse(ParseErr)} {
+fn parse_makefile(text: str, file: str, mut v: Vars, cli_names: Map[str, int]) -> Database ! {
+    parse,
+    Parse(ParseErr),
+} {
     var db = Database {
         assignments: List[Assignment](),
         rules: List[Rule](),
@@ -453,7 +457,12 @@ fn parse_makefile(text: str, file: str) -> Database ! {parse, Parse(ParseErr)} {
                 continue
             },
         }
+        // Store the assignment for -p output
         (mut db.assignments).push(assignment)
+        // Apply the assignment to the variable table, respecting CLI overrides
+        if !map.has(cli_names, assignment.name) {
+            set_var(mut v, assignment.name, assignment.value, assignment.op, assignment.line)
+        }
         line_num += 1
     }
 
@@ -466,14 +475,18 @@ fn parse_makefile(text: str, file: str) -> Database ! {parse, Parse(ParseErr)} {
 }
 
 /// Read a Makefile from a file and parse it.
-fn parse_makefile_file(path: str) -> Database ! {parse, Parse(ParseErr), io} {
+fn parse_makefile_file(path: str, mut v: Vars, cli_names: Map[str, int]) -> Database ! {
+    parse,
+    Parse(ParseErr),
+    io,
+} {
     let text = fs.read_text(path) else |e| match e {
         io => return io,
         denied => return io,
         not_found => return io,
         utf8 => return parse,
     }
-    parse_makefile(text, path)
+    parse_makefile(text, path, mut v, cli_names)
 }
 
 /// Print the database in a stable format for -p.

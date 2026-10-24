@@ -19,7 +19,9 @@ fn parse_phony_ok(line: str, n: int) -> Phony {
 }
 
 fn parse_makefile_ok(text: str) -> Database {
-    parse_makefile(text, "Makefile") else Database {
+    var v = new_vars()
+    var cli_names = Map[str, int]()
+    parse_makefile(text, "Makefile", mut v, cli_names) else Database {
         assignments: List[Assignment](),
         rules: List[Rule](),
         phonies: List[Phony](),

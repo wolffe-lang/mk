@@ -257,24 +257,28 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, Parse(ParseError)} {
     return f
 }
 
-/// Parse the Makefile and build the variable table.
-/// `cli_names` is the set of variable names that were set on the command line.
-/// Assignments to those names are ignored (the command-line value wins).
-fn build_vars(db: Database, cli_names: Map[str, int]) -> Vars {
-    var v = new_vars()
-    for a in db.assignments {
-        // If this name was set on the command line, skip the Makefile assignment
-        if map.has(cli_names, a.name) {
+fn run(mut f: Flags) -> int {
+    // First, collect CLI override names
+    var cli_names = Map[str, int]()
+    for o in f.overrides {
+        let eq = o.find("=") else {
             continue
         }
-        set_var(mut v, a.name, a.value, a.op, a.line)
+        let name = o[0..eq]
+        map.set(mut cli_names, name, 1)
     }
-    return v
-}
-
-fn run(mut f: Flags) -> int {
+    // Seed the variable table with command-line overrides
+    var v = new_vars()
+    for o in f.overrides {
+        let eq = o.find("=") else {
+            continue
+        }
+        let name = o[0..eq]
+        let value = o[eq + 1..]
+        set_var(mut v, name, value, ":=", 0)
+    }
     if f.print_db {
-        let db = parse_makefile_file(f.file) else |e| match e {
+        let db = parse_makefile_file(f.file, mut v, cli_names) else |e| match e {
             parse => {
                 return 2
             },
@@ -299,40 +303,13 @@ fn run(mut f: Flags) -> int {
             eprint("mk: {f.file}:{r.line}: {r.kind}")
             return 2
         }
-        // Build the variable table for expansion
-        // First, collect CLI override names
-        var cli_names = Map[str, int]()
-        for o in f.overrides {
-            let eq = o.find("=") else {
-                continue
-            }
-            let name = o[0..eq]
-            map.set(mut cli_names, name, 1)
-        }
-        // Seed the variable table with command-line overrides
-        var v = new_vars()
-        for o in f.overrides {
-            let eq = o.find("=") else {
-                continue
-            }
-            let name = o[0..eq]
-            let value = o[eq + 1..]
-            set_var(mut v, name, value, ":=", 0)
-        }
-        // Now process Makefile assignments, skipping CLI names
-        for a in db.assignments {
-            if map.has(cli_names, a.name) {
-                continue
-            }
-            set_var(mut v, a.name, a.value, a.op, a.line)
-        }
         print_database(db, v, f.file) else |e| {
             return 2
         }
         return 0
     }
     // Parse the Makefile
-    let db = parse_makefile_file(f.file) else |e| match e {
+    let db = parse_makefile_file(f.file, mut v, cli_names) else |e| match e {
         parse => {
             return 2
         },
@@ -356,33 +333,6 @@ fn run(mut f: Flags) -> int {
         let r = db.refusals[0]
         eprint("mk: {f.file}:{r.line}: {r.kind}")
         return 2
-    }
-    // Build the variable table
-    // First, collect CLI override names
-    var cli_names = Map[str, int]()
-    for o in f.overrides {
-        let eq = o.find("=") else {
-            continue
-        }
-        let name = o[0..eq]
-        map.set(mut cli_names, name, 1)
-    }
-    // Seed the variable table with command-line overrides
-    var v = new_vars()
-    for o in f.overrides {
-        let eq = o.find("=") else {
-            continue
-        }
-        let name = o[0..eq]
-        let value = o[eq + 1..]
-        set_var(mut v, name, value, ":=", 0)
-    }
-    // Now process Makefile assignments, skipping CLI names
-    for a in db.assignments {
-        if map.has(cli_names, a.name) {
-            continue
-        }
-        set_var(mut v, a.name, a.value, a.op, a.line)
     }
     // Build the graph
     let g = build_graph(db, v, f.file) else |e| match e {

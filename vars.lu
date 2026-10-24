@@ -55,8 +55,21 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
     } else if flavour == "+=" {
         if map.has(v.table, name) {
             let existing = var_value(v, name)
-            let new_value = existing + " " + value
-            map.set(mut v.table, name, Var { value: new_value, flavour: "=", line: line })
+            let existing_flavour = var_flavour(v, name)
+            // += keeps the flavour: append to := expands the value, append to = stores text
+            let new_value = if existing_flavour == ":=" {
+                // Append to immediate: expand the new value and append
+                let expanded = expand(v, value, line) else |e| match e {
+                    unterminated(l) => value,
+                    cycle(l, n) => value,
+                }
+                existing + " " + expanded
+            } else {
+                // Append to recursive: store the text
+                existing + " " + value
+            }
+            map.set(mut v.
+                table, name, Var { value: new_value, flavour: existing_flavour, line: line })
         } else {
             map.set(mut v.table, name, Var { value: value, flavour: "=", line: line })
         }
