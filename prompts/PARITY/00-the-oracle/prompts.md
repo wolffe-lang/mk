@@ -32,7 +32,21 @@ commit them as one batch whose message lists what it holds, say so in the verify
    gmake: *** [Makefile:2: all] Error 3
    gmake: [Makefile:2: all] Error 3 (ignored)
    gmake: the '-j' option requires a positive integer argument
+   gmake: Entering directory '/private/tmp/x'      ← under -C (and -w), first line of output
+   gmake: Leaving directory '/private/tmp/x'       ← and the last line, even after an error
    ```
+   **The directory lines.** 4.4.1 prints them whenever `-C` is given (and under `-w`; `--no-print-directory`
+   is track 05's). The path is the **physical** working directory after the change, symlinks resolved.
+   wolf gives it to you: `main.lu` already has `use std.env` and calls `env.set_cwd(f.dir)` for `-C`
+   (line 340); `env.cwd() -> str ! {io}` beside it returns exactly that physical path (WOLF-NOTES §std.env;
+   the reviewer ran it: `env.set_cwd("sub")` then `env.cwd()` → `/private/tmp/…/sub`, from a symlinked path
+   too). Print `mk: Entering directory '…'` right after `set_cwd` and `mk: Leaving directory '…'` as the
+   last line before exit, on stdout as gmake does. **The harness side:** the two tools run in different
+   temporary copies, so their paths differ. In `same_as_make`, after capturing each tool's output, replace
+   that tool's own copy path with the token `DIR` (`sed "s|$a|DIR|g"` on make's output, `sed "s|$b|DIR|g"`
+   on mk's) before `normalize`. Rows that ran `-C "$copy"` already exist (N1, B1, M1, …); do the same
+   replacement in them, with the copy's realpath (`cd "$copy" && pwd -P`), because gmake prints the physical
+   path and `mktemp -d` on macOS returns the `/var/folders/…` spelling of a `/private/var/folders/…` directory.
    The `[Makefile:2: all]` part is new: the Makefile's name as given (`-f` or `Makefile`) and the **line of
    the recipe line that failed**, not the rule's line. `parse.lu`'s `Rule` has `line` (the rule's); give each
    recipe line its own line number (a `List[int]` beside `recipe`, filled in `parse_makefile` where recipe
@@ -41,7 +55,7 @@ commit them as one batch whose message lists what it holds, say so in the verify
    `build_goals_parallel` script's `|| echo` line, which needs the number baked into the script string).
    Change messages one family at a time, rebuilding and rerunning between, and commit each family:
    `messages: 'name' quotes as 4.4.1`, `messages: recipe errors carry Makefile:line`, `messages: the -j
-   option text`.
+   option text`, `messages: Entering and Leaving directory under -C`, `test.sh: the copy path is DIR`.
 5. `./test.sh` green at 94. README: the opening line names GNU make 4.4.1; the `No rule` example and the
    `-j` text are re-pasted from `./mk`; `make` → `gmake` wherever the oracle is named. CHANGELOG: open
    `## Unreleased` with `### Changed` — "the oracle of record is GNU make 4.4.1; messages quote 'name' and
