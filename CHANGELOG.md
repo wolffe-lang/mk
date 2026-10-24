@@ -29,7 +29,10 @@
   files are read in order with the same `Vars` and `Database`
 - `-I DIR` is a new flag: search DIR for included makefiles
 - `MAKEFILE_LIST` is a space-separated list of every makefile read so far, in order
-- README updated with new accepted constructs and test counts (47 unit tests, 102 corpus rows)
+- `ifeq`, `ifneq`, `ifdef`, `ifndef`, `else`, `endif` are accepted: a conditional stack tracks
+  which lines are live; errors include missing `endif`, extraneous `else`, two `else` in one
+  conditional, and invalid syntax in `ifeq`/`ifneq`
+- README updated with new accepted constructs and test counts (48 unit tests, 113 corpus rows)
 
 ## 0.2.1 (2026-10-23)
 
