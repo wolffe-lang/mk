@@ -130,7 +130,7 @@ fn build_target(
         }
         // Apply recipe_for_shell to handle backslash-newline continuations
         let shell_line = recipe_for_shell(line)
-        let cmd = process.command("sh")
+        let cmd = process.command("/bin/sh")
         process.push_arg(mut cmd, "-c")
         process.push_arg(mut cmd, shell_line)
         let exit_code = process.run(cmd) else |e| match e {
@@ -854,7 +854,7 @@ fn build_goals_parallel(
                 }
                 ri += 1
             }
-            let cmd = process.command("sh")
+            let cmd = process.command("/bin/sh")
             process.push_arg(mut cmd, "-c")
             process.push_arg(mut cmd, combined)
             let child = process.start(cmd) else |e| match e {
