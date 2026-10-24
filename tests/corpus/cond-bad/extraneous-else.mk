@@ -1,0 +1,3 @@
+else
+all:
+	echo done

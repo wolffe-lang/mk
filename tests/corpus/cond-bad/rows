@@ -1,0 +1,4 @@
+missing-endif -f missing-endif.mk
+extraneous-else -f extraneous-else.mk
+two-else -f two-else.mk
+invalid-syntax -f invalid-syntax.mk
