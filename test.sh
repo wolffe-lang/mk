@@ -476,10 +476,10 @@ same_as_make() {
     cp -R "$CORPUS_DIR/$dir/." "$b/"
     clean_copy "$a" "$dir"
     clean_copy "$b" "$dir"
-    if [ "$row" = U1 ] || [ "$row" = U2 ]; then
+    case "$row" in U1|U2|again*) ;; *) false ;; esac && {
         (cd "$a" && "$MAKE" "$@" >/dev/null 2>&1 </dev/null) || true
         (cd "$b" && "$ROOT/mk" "$@" >/dev/null 2>&1 </dev/null) || true
-    fi
+    }
     local make_out mk_out make_st=0 mk_st=0
     make_out=$(cd "$a" && "$MAKE" "$@" 2>&1 </dev/null) || make_st=$?
     mk_out=$(cd "$b" && "$ROOT/mk" "$@" 2>&1 </dev/null) || mk_st=$?
