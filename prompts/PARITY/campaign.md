@@ -56,6 +56,22 @@ Before the first prompt of a session, in the project directory:
 4. `wolf build main.lu -o mk && wolf fmt --check *.lu && wolf test . && ./test.sh | tail -1` must be green
    before the first edit; if it is not, stop and say so.
 
+## When wolf says `cannot compile this yet — … @A..B`
+
+That line is the compiler's conservatism ledger, not a syntax error, and it names **no file**: `A..B` is a byte
+range into ONE of the `.lu` files of the module. Never guess which; find it:
+
+```sh
+for f in *.lu; do python3 -c "import sys;b=open('$f','rb').read();print('$f', repr(b[A:B]) if len(b)>B else '')"; done
+```
+
+(with `A` and `B` the numbers from the message). The file whose bytes read as code at that range is the one. The
+usual cause is not what the message says: a call to a function that **may fail** (`-> T ! {…}`) used as a plain
+value, with no `else |e| …` handler and no `?`, makes the value's type a result, and the next method call on it
+(`.words()`, `.len`, …) is then reported as "methods on builtin types". Add the handler the other call sites
+use, rebuild, and the real error appears with its file and line. Try `lupin main.lu` too: its diagnostics
+differ from the compiler's and often name the place. Do not rewrite the file the message seems to point at.
+
 ## Standing rules (every prompt, every track)
 
 1. **Start of every session** above, every time: the notes, the README, the spec, this file, the track.
