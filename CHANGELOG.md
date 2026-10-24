@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The oracle of record is GNU make 4.4.1 (was 3.81); messages quote `'name'` and recipe
+  errors carry `Makefile:line`
+
 ## 0.1.0 (2026-10-23)
 
 Initial release. A `make` for the plain Makefile subset.

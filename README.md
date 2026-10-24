@@ -8,7 +8,7 @@
 A `make` for the plain Makefile subset — targets, prerequisites, recipes, variables,
 automatic variables, mtime-driven rebuilds, `-n`, `-k`, and `-j N` — refusing everything
 else by name. If your Makefile has no pattern rules, no `include`, no `ifeq`, no functions,
-`mk` builds it as GNU make does on the corpus below. `test.sh` compares `mk` against GNU make 3.81:
+`mk` builds it as GNU make does on the corpus below. `test.sh` compares `mk` against GNU make 4.4.1:
 - on 12 corpus directories: the first and the second run, serially and with `-j 2`, and `-n -j 2`;
 - on their own directories: `-k`, `-s` and a command-line variable;
 - each comparing the output, the exit status and the files written.
@@ -85,7 +85,7 @@ A target is out of date when:
 4. The target is `.PHONY`
 
 A prerequisite with no rule that does not exist is an error:
-``mk: *** No rule to make target `missing_file', needed by `result'.  Stop.``
+`mk: *** No rule to make target 'missing_file', needed by 'result'.  Stop.`
 
 ## `-j` and `-k` semantics
 
@@ -109,8 +109,8 @@ wolf fmt --check *.lu
 ```
 
 `test.sh` runs each corpus directory in a fresh `mktemp -d` copy, comparing `mk` against
-GNU `make` on the same Makefile. A row passes when the two tools agree on the observable
-behaviour (output, exit status and the files written). The oracle is GNU make beside it.
+GNU `gmake` on the same Makefile. A row passes when the two tools agree on the observable
+behaviour (output, exit status and the files written). The oracle is GNU make 4.4.1 beside it.
 
 The 94 rows cover 12 directories across 19 test kinds: N1 (dry-run output), B1 (files
 after build), B2 (second run), B3 (build from a subset), F1 (failure with `-k`), M1
