@@ -34,6 +34,7 @@ struct BuildResult {
     name: str,
     success: bool,
     exit_code: int,
+    prereq_failed: bool,
 }
 
 /// An in-flight child with its target name and recipe line number.
@@ -54,14 +55,8 @@ fn recipe_for_shell(line: str) -> str {
     var i = 0
     while i < result.len - 1 {
         if result[i..i + 1] == "\\" && result[i + 1..i + 2] == "\n" {
-            // Found a backslash-newline pair. Replace with a space.
-            // Check if the next character is a tab and skip it.
-            var next = i + 2
-            if next < result.len && result[next..next + 1] == "\t" {
-                next += 1
-            }
-            // Keep the backslash-newline for the shell; drop only the one tab after it
-            result = result[0..i + 2] + result[next..]
+            // The tab after the backslash-newline is already dropped by
+            // join_continuations. No further processing needed.
             i += 2
             continue
         }
@@ -80,13 +75,13 @@ fn build_target(
     makefile: str,
 ) -> BuildResult {
     let node = map.get(g.nodes, name) else {
-        return BuildResult { name: name, success: false, exit_code: 2 }
+        return BuildResult { name: name, success: false, exit_code: 2, prereq_failed: false }
     }
     if !is_out_of_date(g, name, built) {
-        return BuildResult { name: name, success: true, exit_code: 0 }
+        return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
     }
     if node.recipe.len == 0 {
-        return BuildResult { name: name, success: true, exit_code: 0 }
+        return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
     }
     let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
     let all_prereqs = str.join(" ", node.prereqs)
@@ -95,7 +90,7 @@ fn build_target(
     var i = 0
     while i < node.recipe.len {
         let recipe_line = node.recipe[i]
-        let recipe_line_num = node.recipe_lines[i]
+        let recipe_line_num = node.first_recipe_line + i
         let expanded = expand(v, recipe_line)
         let final_line = expand_auto(expanded, name, first_prereq, all_prereqs, newer_prereqs_str)
         var line = final_line
@@ -127,7 +122,7 @@ fn build_target(
         }
         if exit_code != 0 && !ignore_errors {
             eprint("mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}")
-            return BuildResult { name: name, success: false, exit_code: exit_code }
+            return BuildResult { name: name, success: false, exit_code: exit_code, prereq_failed: false }
         }
         if exit_code != 0 && ignore_errors {
             if !silent {
@@ -136,7 +131,7 @@ fn build_target(
         }
         i += 1
     }
-    return BuildResult { name: name, success: true, exit_code: 0 }
+    return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
 }
 
 /// Build a target and its prerequisites recursively (serial mode).
@@ -154,7 +149,7 @@ fn build_recursive(
     makefile: str,
 ) -> BuildResult {
     if map.has(built, name) {
-        return BuildResult { name: name, success: true, exit_code: 0 }
+        return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
     }
     let needle = "\n{name}\n"
     let found = in_progress.find(needle) else -1
@@ -165,7 +160,7 @@ fn build_recursive(
             eprint("mk: Circular {name} dependency dropped.")
         }
         map.set(mut built, name, -1)
-        return BuildResult { name: name, success: true, exit_code: 0 }
+        return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
     }
     let node = map.get(g.nodes, name) else {
         // Case 3: no rule, but the file exists — it's a leaf (source file)
@@ -173,7 +168,7 @@ fn build_recursive(
             // Mark as present but NOT rebuilt (value 0 = not rebuilt in this run)
             // This allows is_out_of_date to check the mtime comparison
             map.set(mut built, name, 0)
-            return BuildResult { name: name, success: true, exit_code: 0 }
+            return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
         }
         // Case 2: no rule and does not exist — error
         if needed_by.len > 0 {
@@ -187,7 +182,7 @@ fn build_recursive(
         } else {
             eprint("mk: *** No rule to make target '{name}'.  Stop.")
         }
-        return BuildResult { name: name, success: false, exit_code: 2 }
+        return BuildResult { name: name, success: false, exit_code: 2, prereq_failed: false }
     }
     let new_in_progress = "{in_progress}{name}\n"
     var prereq_failed = false
@@ -214,7 +209,7 @@ fn build_recursive(
         }
     }
     if prereq_failed {
-        return BuildResult { name: name, success: false, exit_code: 2 }
+        return BuildResult { name: name, success: false, exit_code: 2, prereq_failed: true }
     }
     let is_ooo = is_out_of_date(g, name, built)
     if dry_run {
@@ -246,7 +241,7 @@ fn build_recursive(
                 print("mk: '{name}' is up to date.")
             }
         }
-        return BuildResult { name: name, success: true, exit_code: 0 }
+        return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
     }
     if !is_ooo {
         if is_goal && !silent {
@@ -258,7 +253,7 @@ fn build_recursive(
         }
         // Mark as present but NOT rebuilt (value 0 = not rebuilt in this run)
         map.set(mut built, name, 0)
-        return BuildResult { name: name, success: true, exit_code: 0 }
+        return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
     }
     let result = build_target(g, v, name, silent, built, makefile)
     if result.success {
@@ -416,7 +411,9 @@ fn build_goals_serial(
         if !result.success {
             had_error = true
             if keep_going {
-                eprint("mk: Target '{goal}' not remade because of errors.")
+                if result.prereq_failed {
+                    eprint("mk: Target '{goal}' not remade because of errors.")
+                }
                 continue
             }
             return 2
@@ -727,7 +724,7 @@ fn build_goals_parallel(
             var ri = 0
             while ri < node.recipe.len {
                 let recipe_line = node.recipe[ri]
-                let recipe_line_num = node.recipe_lines[ri]
+                let recipe_line_num = node.first_recipe_line + ri
                 let expanded = expand(v, recipe_line)
                 let final_line = expand_auto(
                     expanded,
@@ -819,7 +816,7 @@ fn build_goals_parallel(
             (mut in_flight).push(Flight {
                 name: name,
                 child: child,
-                recipe_line: node.recipe_lines[0],
+                recipe_line: node.first_recipe_line,
             })
             map.set(mut started, name, 1)
             launched += 1

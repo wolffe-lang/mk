@@ -19,7 +19,7 @@ struct Rule {
     targets: List[str],
     prereqs: List[str],
     recipe: List[str],
-    recipe_lines: List[int],
+    first_recipe_line: int,
     line: int,
 }
 
@@ -66,8 +66,11 @@ fn join_continuations(lines: List[str]) -> List[Line] {
         // While in a recipe continuation, accept the line regardless of its first character.
         // A recipe continuation may be indented with spaces, not just tabs.
         if in_recipe && in_continuation {
-            // Append with newline — the raw text is stored for the shell
-            current = current + "\n" + line
+            // Append with newline — the raw text is stored for the shell.
+            // Drop exactly one leading tab from the continued physical line
+            // (gmake strips the tab that follows each backslash-newline in a recipe).
+            let cont = if line.starts_with("\t") { line[1..] } else { line }
+            current = current + "\n" + cont
             // Check for trailing backslash
             if current.ends_with("\\") {
                 in_continuation = true
@@ -90,8 +93,10 @@ fn join_continuations(lines: List[str]) -> List[Line] {
                 in_continuation = false
             }
             if in_recipe && in_continuation {
-                // This line continues the previous recipe line; append with newline
-                current = current + "\n" + line
+                // This line continues the previous recipe line; append with newline.
+                // Drop exactly one leading tab from the continued physical line.
+                let cont = if line.starts_with("\t") { line[1..] } else { line }
+                current = current + "\n" + cont
             } else {
                 // New recipe line
                 if current.len > 0 {
@@ -299,7 +304,7 @@ fn parse_rule(line: str, line_num: int) -> Rule ! {none} {
         targets: targets,
         prereqs: prereqs,
         recipe: List[str](),
-        recipe_lines: List[int](),
+        first_recipe_line: 0,
         line: line_num,
     }
 }
@@ -346,7 +351,7 @@ fn parse_makefile(text: str) -> Database ! {parse} {
         targets: List[str](),
         prereqs: List[str](),
         recipe: List[str](),
-        recipe_lines: List[int](),
+        first_recipe_line: 0,
         line: 0,
     }
     while line_num < logical_lines.len {
@@ -363,7 +368,10 @@ fn parse_makefile(text: str) -> Database ! {parse} {
                     // No newline, strip the first tab
                     let recipe_line = line[1..]
                     (mut current_rule.recipe).push(recipe_line)
-                    (mut current_rule.recipe_lines).push(line_number)
+                    // Set first_recipe_line on the first recipe line
+                    if current_rule.first_recipe_line == 0 {
+                        current_rule.first_recipe_line = line_number
+                    }
                     line_num += 1
                     continue
                 }
@@ -372,7 +380,10 @@ fn parse_makefile(text: str) -> Database ! {parse} {
                 // line[1..] gives "FIRST\nREST" which is correct
                 let recipe_line = line[1..]
                 (mut current_rule.recipe).push(recipe_line)
-                (mut current_rule.recipe_lines).push(line_number)
+                // Set first_recipe_line on the first recipe line
+                if current_rule.first_recipe_line == 0 {
+                    current_rule.first_recipe_line = line_number
+                }
             }
             line_num += 1
             continue

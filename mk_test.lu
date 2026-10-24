@@ -9,7 +9,7 @@ fn parse_rule_ok(line: str, n: int) -> Rule {
         targets: List[str](),
         prereqs: List[str](),
         recipe: List[str](),
-        recipe_lines: List[int](),
+        first_recipe_line: 0,
         line: 0,
     }
 }
