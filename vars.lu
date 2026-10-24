@@ -1,8 +1,8 @@
-//! vars.lu — variable table, expansion, automatic variables.
+//! vars.lu — variable table, setters, automatic variables.
 //!
 //! Variables: NAME = value (recursive), NAME := value (immediate),
 //! NAME ?= value (set if unset), NAME += value (append).
-//! Reference $(NAME) or ${NAME}; $$ is a literal $.
+//! Expansion is handled by expand.lu (recursive-descent expander).
 //! Automatic variables: $@ $< $^ $?.
 //!
 //! **Expansion timing:** `:=` expands its right-hand side IMMEDIATELY when
@@ -11,13 +11,6 @@
 //! base flavour: `X ?= val` stores `val` unexpanded if `X` is unset;
 //! `X += val` appends ` val` to the existing value, expanding if the existing
 //! value was `:=`-style.
-//!
-//! **`$$` meaning:** In a Makefile, `$$` is a literal `$` that the shell
-//! receives. `mk` expands `$$` to `$` during variable expansion, so the shell
-//! sees `$VAR` and expands it from the environment.
-//!
-//! **`${NAME}` handling:** Handled in `expand` alongside `$(NAME)`, using
-//! `is_open_brace`/`close_brace` helpers to avoid the interpolation trap.
 //!
 //! **`+=` behaviour:** Appends ` value` to the existing value. The resulting
 //! flavour is `=` (recursive) regardless of the original flavour, matching
@@ -68,7 +61,10 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, skip_if_set: b
         }
     } else if flavour == ":=" {
         // := expands immediately
-        let expanded = expand(v, value)
+        let expanded = expand(v, value) else |e| match e {
+            unterminated => value,
+            cycle => value,
+        }
         map.set(mut v.table, name, Var { value: expanded, flavour: flavour })
     } else {
         map.set(mut v.table, name, Var { value: value, flavour: flavour })
@@ -86,94 +82,14 @@ fn set_var_skip(mut v: Vars, name: str, value: str, flavour: str) {
 }
 
 /// Get a variable's value, or empty string if not found.
+/// Also checks the environment for variables not in the table.
 fn var_value(v: Vars, name: str) -> str {
     let val = map.get(v.table, name) else {
-        return ""
+        // Check environment
+        let env_val = env.get(name) else ""
+        return env_val
     }
     return val.value
-}
-
-/// Expand a string, resolving $(NAME) references.
-/// $$ is a literal $. ${NAME} is also supported.
-fn expand(v: Vars, s: str) -> str {
-    var result = ""
-    var i = 0
-    while i < s.len {
-        if s[i..i + 1] == "$" {
-            if i + 1 >= s.len {
-                result = result + "$"
-                i += 1
-                continue
-            }
-            let next = s[i + 1..i + 2]
-            if next == "$" {
-                result = result + "$"
-                i += 2
-                continue
-            }
-            if next == "(" {
-                let rest = s[i + 2..]
-                let end = rest.find(")") else {
-                    result = result + "$"
-                    i += 1
-                    continue
-                }
-                let name = rest[0..end]
-                let val = var_value(v, name)
-                if val.len > 0 {
-                    // Recursively expand the value
-                    result = result + expand(v, val)
-                } else {
-                    let env_val = env.get(name) else ""
-                    result = result + env_val
-                }
-                i = i + 2 + end + 1
-                continue
-            }
-            // Check for { — use a helper to avoid the interpolation trap
-            if is_open_brace(next) {
-                let rest = s[i + 2..]
-                let end = rest.find(close_brace()) else {
-                    result = result + "$"
-                    i += 1
-                    continue
-                }
-                let name = rest[0..end]
-                let val = var_value(v, name)
-                if val.len > 0 {
-                    // Recursively expand the value
-                    result = result + expand(v, val)
-                } else {
-                    let env_val = env.get(name) else ""
-                    result = result + env_val
-                }
-                i = i + 2 + end + 1
-                continue
-            }
-            // $@ $< $^ $? — automatic variables (keep as-is)
-            result = result + "$" + next
-            i += 2
-            continue
-        }
-        result = result + s[i..i + 1]
-        i += 1
-    }
-    return result
-}
-
-/// Return the { character as a string.
-fn open_brace() -> str {
-    "{{"
-}
-
-/// Return the } character as a string.
-fn close_brace() -> str {
-    "}}"
-}
-
-/// Check if a single-character string is {.
-fn is_open_brace(s: str) -> bool {
-    s == open_brace()
 }
 
 /// Expand automatic variables in a string.

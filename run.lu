@@ -91,7 +91,10 @@ fn build_target(
     while i < node.recipe.len {
         let recipe_line = node.recipe[i]
         let recipe_line_num = node.first_recipe_line + i
-        let expanded = expand(v, recipe_line)
+        let expanded = expand(v, recipe_line) else |e| match e {
+            unterminated => recipe_line,
+            cycle => recipe_line,
+        }
         let final_line = expand_auto(expanded, name, first_prereq, all_prereqs, newer_prereqs_str)
         var line = final_line
         var ignore_errors = false
@@ -224,7 +227,10 @@ fn build_recursive(
             let newer = newer_prereqs(g, name, built)
             let newer_prereqs_str = str.join(" ", newer)
             for recipe_line in node.recipe {
-                let expanded = expand(v, recipe_line)
+                let expanded = expand(v, recipe_line) else |e| match e {
+                    unterminated => recipe_line,
+                    cycle => recipe_line,
+                }
                 let final_line = expand_auto(
                     expanded,
                     name,
@@ -698,7 +704,10 @@ fn build_goals_parallel(
                 let newer = newer_prereqs(g, name, built)
                 let newer_prereqs_str = str.join(" ", newer)
                 for recipe_line in node.recipe {
-                    let expanded = expand(v, recipe_line)
+                    let expanded = expand(v, recipe_line) else |e| match e {
+                        unterminated => recipe_line,
+                        cycle => recipe_line,
+                    }
                     let final_line = expand_auto(
                         expanded,
                         name,
@@ -730,7 +739,10 @@ fn build_goals_parallel(
             while ri < node.recipe.len {
                 let recipe_line = node.recipe[ri]
                 let recipe_line_num = node.first_recipe_line + ri
-                let expanded = expand(v, recipe_line)
+                let expanded = expand(v, recipe_line) else |e| match e {
+                    unterminated => recipe_line,
+                    cycle => recipe_line,
+                }
                 let final_line = expand_auto(
                     expanded,
                     name,

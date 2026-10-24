@@ -61,6 +61,8 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]
 | `.PHONY` | `.PHONY: all clean` |
 | `@` silent | `\t@echo hello` |
 | `-` ignore errors | `\t-rm -f *.o` |
+| computed names | `$($(x))` |
+| substitution references | `$(SRC:.c=.o)` |
 
 ### Refused (exit 2, one line on stderr naming the construct)
 
@@ -108,8 +110,8 @@ A prerequisite with no rule that does not exist is an error:
 
 ```
 wolf build main.lu -o mk
-wolf test .              # 42 unit tests
-./test.sh                # 100 corpus rows against GNU make
+wolf test .              # 47 unit tests
+./test.sh                # 102 corpus rows against GNU make
 wolf fmt --check *.lu
 ```
 
@@ -122,12 +124,12 @@ name, the rest are the arguments). A name starting with `again` compares the sec
 of each tool. A copy is cleaned to the directory's git-tracked files. The harness finds
 every `tests/corpus/*/rows` and feeds them into the matrix.
 
-The 94 rows cover 12 directories across 19 test kinds: N1 (dry-run output), B1 (files
+The 102 rows cover 14 directories across 19 test kinds: N1 (dry-run output), B1 (files
 after build), B2 (second run), B3 (build from a subset), F1 (failure with `-k`), M1
 (missing target), C1 (cycle), J1 (wide build), J2 (diamond with `-j`), R1 (refusals),
 P1 (print database), J3 (parallel), U1/U2 (second-run comparison), D1 (dry-run with
 `-j`), K1 (keep-going), S1 (silent), V1 (command-line variables), RJ (refusals under
-`-j`), and E1 (usage errors).
+`-j`), E1 (usage errors), and R (corpus rows with `same_as_make`).
 
 ## Measured numbers
 
@@ -143,7 +145,8 @@ Machine: Apple M5 Pro, macOS, wolf 0.2.34. Date: 2026-10-23.
 |---|---|
 | `main.lu` | CLI parsing, entry point, `-p` delegation |
 | `parse.lu` | Makefile parser: lines, continuations, assignments, rules, recipes |
-| `vars.lu` | Variable table, expansion, automatic variables |
+| `vars.lu` | Variable table, setters, `var_value` (checks environment) |
+| `expand.lu` | Recursive-descent variable expander with balanced references |
 | `graph.lu` | Dependency graph, DFS, cycle detection, out-of-date decision |
 | `run.lu` | Scheduler: serial and parallel execution, `-n`/`-s`/`-k` |
 | `mk_test.lu` | Unit tests for the parser and variable flavours |

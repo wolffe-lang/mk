@@ -218,7 +218,10 @@ fn build_graph(db: Database, v: Vars) -> Graph {
             // Expand prerequisite names and split on whitespace
             var expanded_prereqs = List[str]()
             for p in r.prereqs {
-                let expanded = expand(v, p)
+                let expanded = expand(v, p) else |e| match e {
+                    unterminated => p,
+                    cycle => p,
+                }
                 // Split on whitespace to handle variables that expand to multiple words
                 for word in expanded.words() {
                     (mut expanded_prereqs).push(word)

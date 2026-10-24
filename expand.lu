@@ -1,0 +1,332 @@
+//! expand.lu — recursive-descent variable expander.
+//!
+//! Replaces the old expand in vars.lu. Supports:
+//! - $$ → $
+//! - $x (single letter) → variable x
+//! - $(NAME) and ${NAME} with balanced parens/braces
+//! - Computed names: $(A$(B)) reads variable AB's value when B is B
+//! - Substitution references: $(VAR:.c=.o) and $(VAR:%.c=%.o)
+//! - Function calls: $(foo bar) → "" (routed to call_function)
+//! - Unterminated reference error: expand returns {unterminated}
+//! - Recursive self-reference detection
+
+/// Expand a string, resolving variable references.
+/// Returns {unterminated} if a $( or ${ is not closed.
+/// Returns {cycle} if a variable references itself recursively.
+fn expand(v: Vars, s: str) -> str ! {unterminated, cycle} {
+    expand_inner(v, s, "")
+}
+
+/// Expand with a visiting set for cycle detection.
+/// The `visiting` string contains names currently being expanded,
+/// separated by newlines, to detect recursive self-references.
+fn expand_inner(v: Vars, s: str, visiting: str) -> str ! {unterminated, cycle} {
+    var result = ""
+    var i = 0
+    while i < s.len {
+        if s[i..i + 1] == "$" {
+            if i + 1 >= s.len {
+                result = result + "$"
+                i += 1
+                continue
+            }
+            let next = s[i + 1..i + 2]
+            if next == "$" {
+                result = result + "$"
+                i += 2
+                continue
+            }
+            if next == "(" {
+                // $(...) — find matching close paren
+                let rest = s[i + 2..]
+                let found = balanced_close(rest, "(", ")") else {
+                    return unterminated
+                }
+                let inside = rest[0..found]
+                // Expand the inside first (computed names)
+                let expanded_inside = expand_inner(v, inside, visiting) else {
+                    return unterminated
+                }
+                // Check for substitution reference: $(VAR:.c=.o) or $(VAR:%.c=%.o)
+                let sub_result = try_substitution(v, expanded_inside, visiting) else {
+                    return unterminated
+                }
+                if sub_result.len > 0 {
+                    result = result + sub_result
+                } else {
+                    // Check if it's a function call (contains whitespace)
+                    if is_whitespace(expanded_inside) {
+                        // Function call — route to call_function
+                        let func_result = call_function(v, expanded_inside, visiting)
+                        result = result + func_result
+                    } else {
+                        // Simple variable reference
+                        let val = expand_var(v, expanded_inside, visiting) else {
+                            return unterminated
+                        }
+                        result = result + val
+                    }
+                }
+                i = i + 2 + found + 1
+                continue
+            }
+            if next == "{{" {
+                // ${...} — find matching close brace
+                let rest = s[i + 2..]
+                let found = balanced_close(rest, "{{", "}}") else {
+                    return unterminated
+                }
+                let inside = rest[0..found]
+                // Expand the inside first (computed names)
+                let expanded_inside = expand_inner(v, inside, visiting) else {
+                    return unterminated
+                }
+                // Check for substitution reference
+                let sub_result = try_substitution(v, expanded_inside, visiting) else {
+                    return unterminated
+                }
+                if sub_result.len > 0 {
+                    result = result + sub_result
+                } else {
+                    // Check if it's a function call (contains whitespace)
+                    if is_whitespace(expanded_inside) {
+                        let func_result = call_function(v, expanded_inside, visiting)
+                        result = result + func_result
+                    } else {
+                        let val = expand_var(v, expanded_inside, visiting) else {
+                            return unterminated
+                        }
+                        result = result + val
+                    }
+                }
+                i = i + 2 + found + 1
+                continue
+            }
+            // $x — single character variable reference
+            if is_var_char(next) {
+                // Check if the next character is also a var char — if so, don't expand
+                if i + 2 < s.len && is_var_char(s[i + 2..i + 3]) {
+                    // Multi-character after $, not a valid reference
+                    result = result + "$"
+                    i += 1
+                    continue
+                }
+                let val = expand_var(v, next, visiting) else {
+                    return unterminated
+                }
+                result = result + val
+                i += 2
+                continue
+            }
+            // Not a valid reference
+            result = result + "$"
+            i += 1
+            continue
+        }
+        result = result + s[i..i + 1]
+        i += 1
+    }
+    return result
+}
+
+/// Find the position of the matching close character, counting depth.
+/// Returns the index of the matching close, or none if not found.
+fn balanced_close(s: str, open: str, close: str) -> int ! {none} {
+    var depth = 1
+    var i = 0
+    while i < s.len {
+        if s[i..i + 1] == open {
+            depth += 1
+        } else if s[i..i + 1] == close {
+            depth -= 1
+            if depth == 0 {
+                return i
+            }
+        }
+        i += 1
+    }
+    return none
+}
+
+/// Check if a string contains whitespace.
+fn is_whitespace(s: str) -> bool {
+    if s.contains(" ") {
+        return true
+    }
+    if s.contains("\t") {
+        return true
+    }
+    return false
+}
+
+/// Check if a character is valid in a variable name.
+fn is_var_char(c: str) -> bool {
+    if c.len != 1 {
+        return false
+    }
+    if c >= "a" && c <= "z" {
+        return true
+    }
+    if c >= "A" && c <= "Z" {
+        return true
+    }
+    if c >= "0" && c <= "9" {
+        return true
+    }
+    if c == "_" {
+        return true
+    }
+    return false
+}
+
+/// Expand a variable reference, with cycle detection.
+/// Returns the expanded value, or {cycle} if a cycle is detected.
+fn expand_var(v: Vars, name: str, visiting: str) -> str ! {unterminated, cycle} {
+    // Check if this name is already being visited (cycle detection)
+    let needle = "\n{name}\n"
+    let found = visiting.find(needle) else -1
+    if found >= 0 {
+        // Cycle detected — return error
+        return cycle
+    }
+    // Get the raw value (var_value checks the environment)
+    let raw = var_value(v, name)
+    if raw.len == 0 {
+        return ""
+    }
+    // Expand the value with the updated visiting set
+    let new_visiting = "{visiting}{name}\n"
+    let expanded = expand_inner(v, raw, new_visiting) else {
+        return unterminated
+    }
+    return expanded
+}
+
+/// Try to apply a substitution reference.
+/// Returns the result if it's a substitution, or "" if it's not.
+fn try_substitution(v: Vars, inside: str, visiting: str) -> str ! {unterminated, cycle} {
+    // Check for : form: $(VAR:.c=.o)
+    let colon_pos = inside.find(":") else 0
+    if colon_pos > 0 {
+        let var_name = inside[0..colon_pos]
+        let rest = inside[colon_pos + 1..]
+        // Check for % form: $(VAR:%.c=%.o)
+        if rest.contains("%") {
+            // Pattern substitution
+            let eq_pos = rest.find("=") else 0
+            if eq_pos > 0 {
+                let pattern = rest[0..eq_pos]
+                let replacement = rest[eq_pos + 1..]
+                let val = expand_var(v, var_name, visiting) else {
+                    return unterminated
+                }
+                return apply_pattern_sub(val, pattern, replacement)
+            }
+        } else {
+            // Simple substitution: $(VAR:.c=.o)
+            let eq_pos = rest.find("=") else 0
+            if eq_pos > 0 {
+                let from = rest[0..eq_pos]
+                let to = rest[eq_pos + 1..]
+                let val = expand_var(v, var_name, visiting) else {
+                    return unterminated
+                }
+                return apply_simple_sub(val, from, to)
+            }
+        }
+    }
+    return ""
+}
+
+/// Split a string into words (space-separated).
+fn split_words(s: str) -> List[str] {
+    var result = List[str]()
+    var start = 0
+    var i = 0
+    while i < s.len {
+        if s[i..i + 1] == " " || s[i..i + 1] == "\t" {
+            if i > start {
+                (mut result).push(s[start..i])
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    if start < s.len {
+        (mut result).push(s[start..])
+    }
+    return result
+}
+
+/// Apply a simple substitution: replace trailing `from` with `to` on each word.
+fn apply_simple_sub(s: str, from: str, to: str) -> str {
+    if from.len == 0 {
+        return s
+    }
+    var result = ""
+    var words = split_words(s)
+    var i = 0
+    while i < words.len {
+        let word = words[i]
+        if word.ends_with(from) {
+            let replaced = word[0..word.len - from.len] + to
+            if i > 0 {
+                result = result + " "
+            }
+            result = result + replaced
+        } else {
+            if i > 0 {
+                result = result + " "
+            }
+            result = result + word
+        }
+        i += 1
+    }
+    return result
+}
+
+/// Apply a pattern substitution: $(VAR:%.c=%.o)
+/// % matches any run of characters.
+fn apply_pattern_sub(s: str, pattern: str, replacement: str) -> str {
+    if pattern.len == 0 {
+        return s
+    }
+    var result = ""
+    var words = split_words(s)
+    var i = 0
+    while i < words.len {
+        let word = words[i]
+        // Find % in pattern
+        let pct_pos = pattern.find("%") else 0
+        if pct_pos >= 0 {
+            let prefix = pattern[0..pct_pos]
+            let suffix = pattern[pct_pos + 1..]
+            // Check if word starts with prefix and ends with suffix
+            if word.starts_with(prefix) && word.ends_with(suffix) {
+                let middle = word[prefix.len..word.len - suffix.len]
+                let replaced = replacement.replace("%", middle)
+                if i > 0 {
+                    result = result + " "
+                }
+                result = result + replaced
+            } else {
+                if i > 0 {
+                    result = result + " "
+                }
+                result = result + word
+            }
+        } else {
+            if i > 0 {
+                result = result + " "
+            }
+            result = result + word
+        }
+        i += 1
+    }
+    return result
+}
+
+/// Call a function by name. Returns "" for now (P2 will implement this).
+fn call_function(v: Vars, args: str, visiting: str) -> str {
+    return ""
+}

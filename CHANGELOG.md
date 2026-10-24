@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.2 (2026-10-24)
+
+### Added
+
+- Recursive-descent variable expander (`expand.lu`) with balanced references:
+  `$(A$(B))` expands the inside first, so computed names work
+- `${NAME}` syntax (brace-delimited references)
+- Substitution references: `$(VAR:.c=.o)` replaces trailing `.c` with `.o` on every word
+- Pattern substitution: `$(VAR:%.c=%.o)` where `%` matches any run of characters
+- Cycle detection: a variable referencing itself recursively returns empty
+- `var_value` checks the environment for variables not in the table
+- `tests/corpus/expand/` — exercises all expansion forms
+- `tests/corpus/expand-bad/` — error cases (unterminated references)
+- 5 new unit tests: computed names, nested references, substitution, pattern substitution, cycle detection
+
+### Changed
+
+- `expand` moved from `vars.lu` to `expand.lu` with a new error row `{unterminated, cycle}`
+- `vars.lu` now imports from `expand.lu` and delegates expansion
+- `parse.lu`, `run.lu`, `graph.lu` handle the new `expand` error row
+- README updated with new accepted constructs and test counts (47 unit tests, 102 corpus rows)
+
 ## 0.2.1 (2026-10-23)
 
 ### Fixed

@@ -522,7 +522,10 @@ fn print_database(db: Database, v: Vars) {
     print("# Variables")
     for name in names {
         let val = var_value(v, name)
-        let expanded = expand(v, val)
+        let expanded = expand(v, val) else |e| match e {
+            unterminated => val,
+            cycle => val,
+        }
         print("{name} = {expanded}")
     }
     // Print rules with their prerequisites and recipes

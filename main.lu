@@ -20,7 +20,7 @@ use std.str
 use std.map
 
 /// The version string, embedded at build time.
-let VERSION: str = "0.2.1"
+let VERSION: str = "0.2.2"
 
 let WOLF_VERSION: str = "0.2.34"
 
