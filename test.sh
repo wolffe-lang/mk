@@ -100,10 +100,9 @@ PASS=0
 FAIL=0
 OK_LINES=""
 
-# Normalize prefix: replace "mk:" or "gmake:" with "make:" so the comparison is fair.
-# Also strip gmake's "Entering/Leaving directory" lines (mk does not print them).
+# Normalize prefix: replace "mk:" or "gmake:" with "make:" so the comparison is fair
 normalize() {
-    sed -E 's/^(gmake|make|mk):/MAKE:/' | grep -v '^MAKE: Entering directory' | grep -v '^MAKE: Leaving directory'
+    sed -E 's/^(gmake|make|mk):/MAKE:/'
 }
 
 # Clean a copy of a corpus directory
@@ -167,8 +166,10 @@ run_test() {
 test_n1() {
     local copy="$1" dir="$2"
     clean_copy "$copy" "$dir"
-    local mk_out=$("$MK" -C "$copy" -n 2>&1 | normalize)
-    local make_out=$("$MAKE" -C "$copy" -n 2>&1 | normalize)
+    local copy_real
+    copy_real=$(cd "$copy" && pwd -P)
+    local mk_out=$("$MK" -C "$copy" -n 2>&1 | sed "s|$copy_real|DIR|g" | normalize)
+    local make_out=$("$MAKE" -C "$copy" -n 2>&1 | sed "s|$copy_real|DIR|g" | normalize)
     if [ "$mk_out" = "$make_out" ]; then
         echo "ok N1 $dir"
         PASS=$((PASS + 1))
@@ -242,14 +243,16 @@ test_b3() {
         ignore) source="result" ;;
         leaf) source="shared.txt" ;;
     esac
+    local copy_real
+    copy_real=$(cd "$copy" && pwd -P)
     clean_copy "$copy" "$dir"
     "$MK" -C "$copy" >/dev/null 2>&1 || true
     touch -d "2026-10-22 19:00:00" "$copy/$source"
-    local mk_out=$("$MK" -C "$copy" -n 2>&1 | normalize)
+    local mk_out=$("$MK" -C "$copy" -n 2>&1 | sed "s|$copy_real|DIR|g" | normalize)
     clean_copy "$copy" "$dir"
     "$MAKE" -C "$copy" >/dev/null 2>&1 || true
     touch -d "2026-10-22 19:00:00" "$copy/$source"
-    local make_out=$("$MAKE" -C "$copy" -n 2>&1 | normalize)
+    local make_out=$("$MAKE" -C "$copy" -n 2>&1 | sed "s|$copy_real|DIR|g" | normalize)
     if [ "$mk_out" = "$make_out" ]; then
         echo "ok B3 $dir"
         PASS=$((PASS + 1))
@@ -298,8 +301,10 @@ test_f1() {
 test_m1() {
     local copy="$1" dir="$2"
     clean_copy "$copy" "$dir"
-    local mk_out=$("$MK" -C "$copy" 2>&1 | normalize)
-    local make_out=$("$MAKE" -C "$copy" 2>&1 | normalize)
+    local copy_real
+    copy_real=$(cd "$copy" && pwd -P)
+    local mk_out=$("$MK" -C "$copy" 2>&1 | sed "s|$copy_real|DIR|g" | normalize)
+    local make_out=$("$MAKE" -C "$copy" 2>&1 | sed "s|$copy_real|DIR|g" | normalize)
     if [ "$mk_out" = "$make_out" ]; then
         echo "ok M1 $dir"
         PASS=$((PASS + 1))
@@ -313,9 +318,11 @@ test_m1() {
 test_c1() {
     local copy="$1" dir="$2"
     clean_copy "$copy" "$dir"
-    local mk_out=$("$MK" -C "$copy" 2>&1 | normalize)
+    local copy_real
+    copy_real=$(cd "$copy" && pwd -P)
+    local mk_out=$("$MK" -C "$copy" 2>&1 | sed "s|$copy_real|DIR|g" | normalize)
     clean_copy "$copy" "$dir"
-    local make_out=$("$MAKE" -C "$copy" 2>&1 | normalize)
+    local make_out=$("$MAKE" -C "$copy" 2>&1 | sed "s|$copy_real|DIR|g" | normalize)
     if [ "$mk_out" = "$make_out" ]; then
         echo "ok C1 $dir"
         PASS=$((PASS + 1))
@@ -485,6 +492,13 @@ same_as_make() {
     local make_out mk_out make_st=0 mk_st=0
     make_out=$(cd "$a" && "$MAKE" "$@" 2>&1 </dev/null) || make_st=$?
     mk_out=$(cd "$b" && "$ROOT/mk" "$@" 2>&1 </dev/null) || mk_st=$?
+    # Replace each tool's own copy path with DIR so paths from different temp dirs compare equal
+    # gmake prints the physical path (pwd -P), mk prints env.cwd() (also physical)
+    local a_real b_real
+    a_real=$(cd "$a" && pwd -P)
+    b_real=$(cd "$b" && pwd -P)
+    make_out=$(printf '%s\n' "$make_out" | sed "s|$a_real|DIR|g")
+    mk_out=$(printf '%s\n' "$mk_out" | sed "s|$b_real|DIR|g")
     make_out=$(printf '%s\n' "$make_out" | sed -E 's/^(gmake|make):/TOOL:/' | sort)
     mk_out=$(printf '%s\n' "$mk_out" | sed -E 's/^(gmake|make|mk):/TOOL:/' | sort)
     local make_files mk_files

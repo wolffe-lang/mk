@@ -336,6 +336,7 @@ fn main() -> !int {
         },
     }
     // Change directory if -C is used
+    var abs_dir = ""
     if f.dir.len > 0 {
         env.set_cwd(f.dir) else |e| match e {
             io => {
@@ -351,6 +352,9 @@ fn main() -> !int {
                 return 2
             },
         }
+        // Get the physical absolute path (symlinks resolved), same as gmake prints
+        abs_dir = env.cwd() else |_| f.dir
+        print("mk: Entering directory '{abs_dir}'")
     }
     if f.print_db {
         let db = parse_makefile_file(f.file) else |e| match e {
@@ -454,5 +458,9 @@ fn main() -> !int {
         f.jobs,
         f.file,
     )
+    // Print "Leaving directory" if -C was used
+    if f.dir.len > 0 {
+        print("mk: Leaving directory '{abs_dir}'")
+    }
     return exit_code
 }
