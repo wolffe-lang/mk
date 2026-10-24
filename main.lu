@@ -15,6 +15,7 @@
 //! and prints the parsed structure with --debug-opts.
 
 use std.env
+use std.fs
 use std.str
 use std.map
 
@@ -271,6 +272,132 @@ fn build_vars(db: Database, cli_names: Map[str, int]) -> Vars {
     return v
 }
 
+fn run(mut f: Flags) -> int {
+    if f.print_db {
+        let db = parse_makefile_file(f.file) else |e| match e {
+            parse => {
+                return 2
+            },
+            Parse(p) => {
+                eprint("{p.file}:{p.line}: *** {p.message}.  Stop.")
+                return 2
+            },
+            io => {
+                // Check if the file exists
+                if !fs.exists(f.file) {
+                    eprint("mk: {f.file}: No such file or directory")
+                    eprint("mk: *** No rule to make target '{f.file}'.  Stop.")
+                } else {
+                    eprint("mk: cannot read {f.file}")
+                }
+                return 2
+            },
+        }
+        if db.refusals.len > 0 {
+            // Print only the first refusal on stderr with the correct format
+            let r = db.refusals[0]
+            eprint("mk: {f.file}:{r.line}: {r.kind}")
+            return 2
+        }
+        // Build the variable table for expansion
+        // First, collect CLI override names
+        var cli_names = Map[str, int]()
+        for o in f.overrides {
+            let eq = o.find("=") else {
+                continue
+            }
+            let name = o[0..eq]
+            map.set(mut cli_names, name, 1)
+        }
+        // Seed the variable table with command-line overrides
+        var v = new_vars()
+        for o in f.overrides {
+            let eq = o.find("=") else {
+                continue
+            }
+            let name = o[0..eq]
+            let value = o[eq + 1..]
+            set_var(mut v, name, value, ":=")
+        }
+        // Now process Makefile assignments, skipping CLI names
+        for a in db.assignments {
+            if map.has(cli_names, a.name) {
+                continue
+            }
+            set_var(mut v, a.name, a.value, a.op)
+        }
+        print_database(db, v)
+        return 0
+    }
+    // Parse the Makefile
+    let db = parse_makefile_file(f.file) else |e| match e {
+        parse => {
+            return 2
+        },
+        Parse(p) => {
+            eprint("{p.file}:{p.line}: *** {p.message}.  Stop.")
+            return 2
+        },
+        io => {
+            // Check if the file exists
+            if !fs.exists(f.file) {
+                eprint("mk: {f.file}: No such file or directory")
+                eprint("mk: *** No rule to make target '{f.file}'.  Stop.")
+            } else {
+                eprint("mk: cannot read {f.file}")
+            }
+            return 2
+        },
+    }
+    if db.refusals.len > 0 {
+        // Print only the first refusal on stderr with the correct format
+        let r = db.refusals[0]
+        eprint("mk: {f.file}:{r.line}: {r.kind}")
+        return 2
+    }
+    // Build the variable table
+    // First, collect CLI override names
+    var cli_names = Map[str, int]()
+    for o in f.overrides {
+        let eq = o.find("=") else {
+            continue
+        }
+        let name = o[0..eq]
+        map.set(mut cli_names, name, 1)
+    }
+    // Seed the variable table with command-line overrides
+    var v = new_vars()
+    for o in f.overrides {
+        let eq = o.find("=") else {
+            continue
+        }
+        let name = o[0..eq]
+        let value = o[eq + 1..]
+        set_var(mut v, name, value, ":=")
+    }
+    // Now process Makefile assignments, skipping CLI names
+    for a in db.assignments {
+        if map.has(cli_names, a.name) {
+            continue
+        }
+        set_var(mut v, a.name, a.value, a.op)
+    }
+    // Build the graph
+    let g = build_graph(db, v)
+    // Build the goals
+    let exit_code = build_goals(
+        g,
+        v,
+        mut f.goals,
+        f.silent,
+        f.dry_run,
+        f.keep_going,
+        f.jobs,
+        f.file,
+    )
+    return exit_code
+}
+
 fn main() -> !int {
     let args = env.args()
     var debug = false
@@ -335,20 +462,32 @@ fn main() -> !int {
             return 2
         },
     }
-    // Change directory if -C is used
+    // Change directory if -C is used. If it fails, use the current directory.
     var abs_dir = ""
     if f.dir.len > 0 {
         env.set_cwd(f.dir) else |e| match e {
             io => {
-                eprint("mk: cannot change to {f.dir}")
+                // -C failed; use current directory
+                abs_dir = env.cwd() else |_| ""
+                print("mk: Entering directory '{abs_dir}'")
+                let status = run(mut f)
+                print("mk: Leaving directory '{abs_dir}'")
                 return 2
             },
             denied => {
-                eprint("mk: cannot change to {f.dir}")
+                // -C failed; use current directory
+                abs_dir = env.cwd() else |_| ""
+                print("mk: Entering directory '{abs_dir}'")
+                let status = run(mut f)
+                print("mk: Leaving directory '{abs_dir}'")
                 return 2
             },
             not_found => {
-                eprint("mk: cannot change to {f.dir}")
+                // -C failed; use current directory
+                abs_dir = env.cwd() else |_| ""
+                print("mk: Entering directory '{abs_dir}'")
+                let status = run(mut f)
+                print("mk: Leaving directory '{abs_dir}'")
                 return 2
             },
         }
@@ -356,111 +495,10 @@ fn main() -> !int {
         abs_dir = env.cwd() else |_| f.dir
         print("mk: Entering directory '{abs_dir}'")
     }
-    if f.print_db {
-        let db = parse_makefile_file(f.file) else |e| match e {
-            parse => {
-                return 2
-            },
-            io => {
-                eprint("mk: cannot read {f.file}")
-                return 2
-            },
-        }
-        if db.refusals.len > 0 {
-            // Print only the first refusal on stderr with the correct format
-            let r = db.refusals[0]
-            eprint("mk: {f.file}:{r.line}: {r.kind}")
-            return 2
-        }
-        // Build the variable table for expansion
-        // First, collect CLI override names
-        var cli_names = Map[str, int]()
-        for o in f.overrides {
-            let eq = o.find("=") else {
-                continue
-            }
-            let name = o[0..eq]
-            map.set(mut cli_names, name, 1)
-        }
-        // Seed the variable table with command-line overrides
-        var v = new_vars()
-        for o in f.overrides {
-            let eq = o.find("=") else {
-                continue
-            }
-            let name = o[0..eq]
-            let value = o[eq + 1..]
-            set_var(mut v, name, value, ":=")
-        }
-        // Now process Makefile assignments, skipping CLI names
-        for a in db.assignments {
-            if map.has(cli_names, a.name) {
-                continue
-            }
-            set_var(mut v, a.name, a.value, a.op)
-        }
-        print_database(db, v)
-        return 0
-    }
-    // Parse the Makefile
-    let db = parse_makefile_file(f.file) else |e| match e {
-        parse => {
-            return 2
-        },
-        io => {
-            eprint("mk: cannot read {f.file}")
-            return 2
-        },
-    }
-    if db.refusals.len > 0 {
-        // Print only the first refusal on stderr with the correct format
-        let r = db.refusals[0]
-        eprint("mk: {f.file}:{r.line}: {r.kind}")
-        return 2
-    }
-    // Build the variable table
-    // First, collect CLI override names
-    var cli_names = Map[str, int]()
-    for o in f.overrides {
-        let eq = o.find("=") else {
-            continue
-        }
-        let name = o[0..eq]
-        map.set(mut cli_names, name, 1)
-    }
-    // Seed the variable table with command-line overrides
-    var v = new_vars()
-    for o in f.overrides {
-        let eq = o.find("=") else {
-            continue
-        }
-        let name = o[0..eq]
-        let value = o[eq + 1..]
-        set_var(mut v, name, value, ":=")
-    }
-    // Now process Makefile assignments, skipping CLI names
-    for a in db.assignments {
-        if map.has(cli_names, a.name) {
-            continue
-        }
-        set_var(mut v, a.name, a.value, a.op)
-    }
-    // Build the graph
-    let g = build_graph(db, v)
-    // Build the goals
-    let exit_code = build_goals(
-        g,
-        v,
-        mut f.goals,
-        f.silent,
-        f.dry_run,
-        f.keep_going,
-        f.jobs,
-        f.file,
-    )
+    let status = run(mut f)
     // Print "Leaving directory" if -C was used
     if f.dir.len > 0 {
         print("mk: Leaving directory '{abs_dir}'")
     }
-    return exit_code
+    return status
 }

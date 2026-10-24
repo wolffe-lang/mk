@@ -35,6 +35,13 @@ struct Refusal {
     line: int,
 }
 
+/// A parse error with file, line, and message.
+struct ParseErr {
+    file: str,
+    line: int,
+    message: str,
+}
+
 /// A logical line with its first physical line number.
 struct Line {
     text: str,
@@ -330,7 +337,8 @@ fn parse_phony(line: str, line_num: int) -> Phony ! {none} {
 }
 
 /// Parse a Makefile from text. Returns the database.
-fn parse_makefile(text: str) -> Database ! {parse} {
+/// `file` is the filename for error messages.
+fn parse_makefile(text: str, file: str) -> Database ! {parse, Parse(ParseErr)} {
     var db = Database {
         assignments: List[Assignment](),
         rules: List[Rule](),
@@ -424,9 +432,14 @@ fn parse_makefile(text: str) -> Database ! {parse} {
                         // Not .PHONY, try as rule
                         let rule = parse_rule(stripped, line_number) else |e2| match e2 {
                             none => {
-                                // Unknown line, skip
-                                line_num += 1
-                                continue
+                                // Unknown line: not blank, not a comment, not a recipe line,
+                                // not an assignment, not a rule, not a refusal.
+                                // This is a "missing separator" error.
+                                return Parse(ParseErr {
+                                    file: file,
+                                    line: line_number,
+                                    message: "missing separator",
+                                })
                             },
                         }
                         current_rule = rule
@@ -453,14 +466,14 @@ fn parse_makefile(text: str) -> Database ! {parse} {
 }
 
 /// Read a Makefile from a file and parse it.
-fn parse_makefile_file(path: str) -> Database ! {parse, io} {
+fn parse_makefile_file(path: str) -> Database ! {parse, Parse(ParseErr), io} {
     let text = fs.read_text(path) else |e| match e {
         io => return io,
         denied => return io,
         not_found => return io,
         utf8 => return parse,
     }
-    parse_makefile(text)
+    parse_makefile(text, path)
 }
 
 /// Print the database in a stable format for -p.

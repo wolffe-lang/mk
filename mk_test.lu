@@ -19,7 +19,7 @@ fn parse_phony_ok(line: str, n: int) -> Phony {
 }
 
 fn parse_makefile_ok(text: str) -> Database {
-    parse_makefile(text) else Database {
+    parse_makefile(text, "Makefile") else Database {
         assignments: List[Assignment](),
         rules: List[Rule](),
         phonies: List[Phony](),
