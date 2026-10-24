@@ -25,6 +25,10 @@
   giving correct order-dependent behavior (`A := $(B)` before `B = 1` makes `A` empty)
 - `+=` keeps the flavour: append to `:=` expands the value, append to `=` stores text
 - `build_vars` is deleted from `main.lu`
+- `include`, `-include`, and `sinclude` are accepted: names are expanded, globs are expanded,
+  files are read in order with the same `Vars` and `Database`
+- `-I DIR` is a new flag: search DIR for included makefiles
+- `MAKEFILE_LIST` is a space-separated list of every makefile read so far, in order
 - README updated with new accepted constructs and test counts (47 unit tests, 102 corpus rows)
 
 ## 0.2.1 (2026-10-23)
