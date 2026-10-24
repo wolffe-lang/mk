@@ -26,7 +26,7 @@ Requires wolf 0.2.34 (https://github.com/wolffe-lang/wolf-lang) and a POSIX shel
 ## Usage
 
 ```
-Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]...
+Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE]... [GOAL]...
        mk --help
        mk --version
 
@@ -37,6 +37,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]
   -j [N]     allow up to N jobs at once; no N: no limit
   -f FILE    read FILE as the Makefile
   -C DIR     change to DIR before doing anything
+  -I DIR     search DIR for included makefiles
   --version  print the version and exit
   NAME=VALUE set a variable from the command line
 ```
@@ -63,14 +64,15 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]
 | `-` ignore errors | `\t-rm -f *.o` |
 | computed names | `$($(x))` |
 | substitution references | `$(SRC:.c=.o)` |
+| `include` / `-include` / `sinclude` | `include $(DIR)/x.mk` |
+| `-I DIR` | search DIR for included makefiles |
+| `ifeq` / `ifneq` / `ifdef` / `ifndef` / `else` / `endif` | `ifeq ($(A),$(B))` |
 
 ### Refused (exit 2, one line on stderr naming the construct)
 
 | construct | message |
 |---|---|
 | pattern rules | `pattern rules are not supported` |
-| `include` / `-include` | `include is not supported` |
-| `ifeq` / `ifdef` / `ifndef` / `else` / `endif` | `conditional directives are not supported` |
 | `define` / `endef` | `define is not supported` |
 | `.SUFFIXES` | `.SUFFIXES is not supported` |
 | `|` order-only prerequisites | `order-only prerequisites are not supported` |
@@ -110,8 +112,8 @@ A prerequisite with no rule that does not exist is an error:
 
 ```
 wolf build main.lu -o mk
-wolf test .              # 47 unit tests
-./test.sh                # 102 corpus rows against GNU make
+wolf test .              # 48 unit tests
+./test.sh                # 113 corpus rows against GNU make
 wolf fmt --check *.lu
 ```
 
@@ -124,7 +126,7 @@ name, the rest are the arguments). A name starting with `again` compares the sec
 of each tool. A copy is cleaned to the directory's git-tracked files. The harness finds
 every `tests/corpus/*/rows` and feeds them into the matrix.
 
-The 102 rows cover 14 directories across 19 test kinds: N1 (dry-run output), B1 (files
+The 113 rows cover 14 directories across 19 test kinds: N1 (dry-run output), B1 (files
 after build), B2 (second run), B3 (build from a subset), F1 (failure with `-k`), M1
 (missing target), C1 (cycle), J1 (wide build), J2 (diamond with `-j`), R1 (refusals),
 P1 (print database), J3 (parallel), U1/U2 (second-run comparison), D1 (dry-run with
