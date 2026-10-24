@@ -13,3 +13,13 @@
 3. **`Leaving directory` is skipped on every exit before the build** (a refusal, a missing `-f` file, a parse error): `main.lu` prints it only at line 463. Found with it: a line that is neither rule, assignment nor recipe (`foo bar`) is silently ignored where gmake stops with `Makefile:2: *** missing separator.  Stop.`; and `-f nope` prints `mk: cannot read nope` where gmake prints `gmake: nope: No such file or directory` then `gmake: *** No rule to make target 'nope'.  Stop.`
 
 None of these is in the 94 rows; P0.4–P0.6 add the rows first.
+
+## Second judge (2026-10-24, from a fresh clone at `5942bdd`, 0.2.1)
+
+**Verdict: READY. Track 00 is closed; track 01 is open.**
+
+- Clean tree; `wolf build` 0; `wolf fmt --check *.lu` clean; `wolf test .` 42; `./test.sh` **100/100** (94 + the six rows P0.4–P0.6 added); `mk --version` → `mk 0.2.1 (built with wolf 0.2.34)`.
+- The three defects, probed again outside the corpus against `gmake` 4.4.1, each with the copy path as `DIR` and the program name the only difference:
+  1. continued recipe (`x \` / `\t\t  y \` / `\tz` then `@false`): both print `x 	  y z` and `*** [Makefile:3: all] Error 1`, exit 2;
+  2. a recipe with blank lines before the failing line: both say `[Makefile:5: all]`;
+  3. `foo bar` as the first line: both `Makefile:1: *** missing separator.  Stop.`, exit 2; `-C . -f nope`: both print `Entering` and `Leaving` around the two `nope` lines; `-C . -k -n`: both print the three lines.
