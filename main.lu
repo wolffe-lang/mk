@@ -35,11 +35,14 @@ struct Flags {
     print_db: bool,
     overrides: List[str],
     goals: List[str],
+    include_dirs: List[str],
 }
 
 /// Print usage and exit 0.
 fn print_usage() -> int {
-    print("Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [NAME=VALUE]... [GOAL]...")
+    print(
+        "Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE]... [GOAL]...",
+    )
     print("       mk --help")
     print("       mk --version")
     print("")
@@ -50,6 +53,7 @@ fn print_usage() -> int {
     print("  -j [N]     allow up to N jobs at once; no N: no limit")
     print("  -f FILE    read FILE as the Makefile")
     print("  -C DIR     change to DIR before doing anything")
+    print("  -I DIR     search DIR for included makefiles")
     print("  --version  print the version and exit")
     print("  NAME=VALUE set a variable from the command line")
     0
@@ -92,6 +96,9 @@ fn parse_arg(arg: str) -> str {
     }
     if arg == "-j" || arg.starts_with("-j") {
         return "jobs_flag"
+    }
+    if arg == "-I" || arg.starts_with("-I") {
+        return "include_dir_flag"
     }
     if arg.contains("=") {
         return "override"
@@ -155,6 +162,7 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, Parse(ParseError)} {
         print_db: false,
         overrides: List[str](),
         goals: List[str](),
+        include_dirs: List[str](),
     }
     var i = 0
     while i < args.len {
@@ -236,6 +244,25 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, Parse(ParseError)} {
             }
             continue
         }
+        if kind == "include_dir_flag" {
+            // -I DIR or -IDIR
+            if arg == "-I" {
+                if i + 1 >= args.len {
+                    return Parse(ParseError { kind: "missing_arg", arg: "-I" })
+                }
+                (mut f.include_dirs).push(args[i + 1])
+                i += 2
+            } else {
+                // -IDIR
+                let dir = arg[2..]
+                if dir.len == 0 {
+                    return Parse(ParseError { kind: "missing_arg", arg: "-I" })
+                }
+                (mut f.include_dirs).push(dir)
+                i += 1
+            }
+            continue
+        }
         if kind == "override" {
             (mut f.overrides).push(arg)
             i += 1
@@ -277,8 +304,10 @@ fn run(mut f: Flags) -> int {
         let value = o[eq + 1..]
         set_var(mut v, name, value, ":=", 0)
     }
+    // Set MAKEFILE_LIST to the main file
+    set_var(mut v, "MAKEFILE_LIST", f.file, "=", 0)
     if f.print_db {
-        let db = parse_makefile_file(f.file, mut v, cli_names) else |e| match e {
+        let db = parse_makefile_file(f.file, mut v, cli_names, f.include_dirs) else |e| match e {
             parse => {
                 return 2
             },
@@ -309,7 +338,7 @@ fn run(mut f: Flags) -> int {
         return 0
     }
     // Parse the Makefile
-    let db = parse_makefile_file(f.file, mut v, cli_names) else |e| match e {
+    let db = parse_makefile_file(f.file, mut v, cli_names, f.include_dirs) else |e| match e {
         parse => {
             return 2
         },

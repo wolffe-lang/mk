@@ -30,6 +30,13 @@ struct Phony {
     line: int,
 }
 
+/// A parsed include directive.
+struct Include {
+    names: List[str],
+    optional: bool,
+    line: int,
+}
+
 /// A refusal to parse a construct.
 struct Refusal {
     kind: str,
@@ -54,6 +61,7 @@ struct Database {
     assignments: List[Assignment],
     rules: List[Rule],
     phonies: List[Phony],
+    includes: List[Include],
     refusals: List[Refusal],
 }
 
@@ -189,10 +197,6 @@ fn check_refusal(line: str) -> str {
     // Pattern rules: contain % in the target
     if line.contains("%") {
         return "pattern rules are not supported"
-    }
-    // include directive
-    if line.starts_with("include ") || line.starts_with("-include ") {
-        return "include is not supported"
     }
     // ifeq/ifdef/ifndef/else/endif
     if line.starts_with("ifeq") || line.starts_with("ifdef") || line.starts_with("ifndef") {
@@ -337,16 +341,48 @@ fn parse_phony(line: str, line_num: int) -> Phony ! {none} {
     }
 }
 
+/// Parse an include line. Returns the include directive, or empty if it's not an include.
+fn parse_include(line: str, line_num: int) -> Include ! {none} {
+    // Check for -include or sinclude (both are optional)
+    let optional = line.starts_with("-include ") || line.starts_with("sinclude ")
+    let names_str = if optional {
+        // Strip the -include or sinclude prefix
+        if line.starts_with("-include ") {
+            line[9..]
+        } else {
+            line[9..]
+        }
+    } else if line.starts_with("include ") {
+        line[8..]
+    } else {
+        return none
+    }
+    if names_str.len == 0 {
+        return none
+    }
+    let names = names_str.words()
+    return Include {
+        names: names,
+        optional: optional,
+        line: line_num,
+    }
+}
+
 /// Parse a Makefile from text. Returns the database.
 /// `file` is the filename for error messages.
-fn parse_makefile(text: str, file: str, mut v: Vars, cli_names: Map[str, int]) -> Database ! {
-    parse,
-    Parse(ParseErr),
-} {
+/// `include_dirs` is the list of -I directories to search for included files.
+fn parse_makefile(
+    text: str,
+    file: str,
+    mut v: Vars,
+    cli_names: Map[str, int],
+    include_dirs: List[str],
+) -> Database ! {parse, Parse(ParseErr), io} {
     var db = Database {
         assignments: List[Assignment](),
         rules: List[Rule](),
         phonies: List[Phony](),
+        includes: List[Include](),
         refusals: List[Refusal](),
     }
 
@@ -430,29 +466,129 @@ fn parse_makefile(text: str, file: str, mut v: Vars, cli_names: Map[str, int]) -
         // Try to parse as assignment
         let assignment = parse_assignment(stripped, line_number) else |e| match e {
             none => {
-                // Not an assignment, try as .PHONY first (before rule, since .PHONY: looks like a rule)
-                let phony = parse_phony(stripped, line_number) else |e3| match e3 {
+                // Not an assignment, try as include first (before .PHONY and rule)
+                let include = parse_include(stripped, line_number) else |e4| match e4 {
                     none => {
-                        // Not .PHONY, try as rule
-                        let rule = parse_rule(stripped, line_number) else |e2| match e2 {
+                        // Not an include, try as .PHONY first (before rule, since .PHONY: looks like a rule)
+                        let phony = parse_phony(stripped, line_number) else |e3| match e3 {
                             none => {
-                                // Unknown line: not blank, not a comment, not a recipe line,
-                                // not an assignment, not a rule, not a refusal.
-                                // This is a "missing separator" error.
-                                return Parse(ParseErr {
-                                    file: file,
-                                    line: line_number,
-                                    message: "missing separator",
-                                })
+                                // Not .PHONY, try as rule
+                                let rule = parse_rule(stripped, line_number) else |e2| match e2 {
+                                    none => {
+                                        // Unknown line: not blank, not a comment, not a recipe line,
+                                        // not an assignment, not a rule, not a refusal.
+                                        // This is a "missing separator" error.
+                                        return Parse(ParseErr {
+                                            file: file,
+                                            line: line_number,
+                                            message: "missing separator",
+                                        })
+                                    },
+                                }
+                                current_rule = rule
+                                has_rule = true
+                                line_num += 1
+                                continue
                             },
                         }
-                        current_rule = rule
-                        has_rule = true
+                        (mut db.phonies).push(phony)
                         line_num += 1
                         continue
                     },
                 }
-                (mut db.phonies).push(phony)
+                // Store the include for -p output
+                (mut db.includes).push(include)
+                // Process the include directive
+                for name in include.names {
+                    // Expand the name
+                    let expanded = expand(v, name, include.line) else |e| match e {
+                        unterminated(l) => {
+                            eprint("{file}:{l}: *** unterminated variable reference.  Stop.")
+                            return parse
+                        },
+                        cycle(l, n) => {
+                            eprint(
+                                "{file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
+                            )
+                            return parse
+                        },
+                    }
+                    // Glob the expanded name
+                    let globs = glob(expanded)
+                    if globs.len == 0 {
+                        // No matches
+                        if !include.optional {
+                            // Hard include: error
+                            eprint("{file}:{include.line}: {expanded}: No such file or directory")
+                            eprint("mk: *** No rule to make target '{expanded}'.  Stop.")
+                            return parse
+                        }
+                        // Soft include: silent
+                        continue
+                    }
+                    // Read and parse each file
+                    for g in globs {
+                        let sub_db = parse_makefile_file(
+                            g,
+                            mut v,
+                            cli_names,
+                            include_dirs,
+                        ) else |e| match e {
+                            parse => {
+                                if !include.optional {
+                                    eprint("{file}:{include.line}: {g}: No such file or directory")
+                                    eprint("mk: *** No rule to make target '{g}'.  Stop.")
+                                    return parse
+                                }
+                                // Soft include: silent
+                                continue
+                            },
+                            Parse(p) => {
+                                if !include.optional {
+                                    eprint("{p.file}:{p.line}: *** {p.message}.  Stop.")
+                                    return parse
+                                }
+                                // Soft include: silent
+                                continue
+                            },
+                            io => {
+                                if !include.optional {
+                                    eprint("{file}:{include.line}: {g}: No such file or directory")
+                                    eprint("mk: *** No rule to make target '{g}'.  Stop.")
+                                    return parse
+                                }
+                                // Soft include: silent
+                                continue
+                            },
+                        }
+                        // Merge the sub-database into the main database
+                        for a in sub_db.assignments {
+                            (mut db.assignments).push(a)
+                            if !map.has(cli_names, a.name) {
+                                set_var(mut v, a.name, a.value, a.op, a.line)
+                            }
+                        }
+                        for r in sub_db.rules {
+                            (mut db.rules).push(r)
+                        }
+                        for p in sub_db.phonies {
+                            (mut db.phonies).push(p)
+                        }
+                        for i in sub_db.includes {
+                            (mut db.includes).push(i)
+                        }
+                        for r in sub_db.refusals {
+                            (mut db.refusals).push(r)
+                        }
+                        // Update MAKEFILE_LIST
+                        let current_list = var_value(v, "MAKEFILE_LIST")
+                        if current_list.len > 0 {
+                            set_var(mut v, "MAKEFILE_LIST", current_list + " " + g, "=", 0)
+                        } else {
+                            set_var(mut v, "MAKEFILE_LIST", g, "=", 0)
+                        }
+                    }
+                }
                 line_num += 1
                 continue
             },
@@ -475,18 +611,20 @@ fn parse_makefile(text: str, file: str, mut v: Vars, cli_names: Map[str, int]) -
 }
 
 /// Read a Makefile from a file and parse it.
-fn parse_makefile_file(path: str, mut v: Vars, cli_names: Map[str, int]) -> Database ! {
-    parse,
-    Parse(ParseErr),
-    io,
-} {
+/// `include_dirs` is the list of -I directories to search for included files.
+fn parse_makefile_file(
+    path: str,
+    mut v: Vars,
+    cli_names: Map[str, int],
+    include_dirs: List[str],
+) -> Database ! {parse, Parse(ParseErr), io} {
     let text = fs.read_text(path) else |e| match e {
         io => return io,
         denied => return io,
         not_found => return io,
         utf8 => return parse,
     }
-    parse_makefile(text, path, mut v, cli_names)
+    parse_makefile(text, path, mut v, cli_names, include_dirs)
 }
 
 /// Print the database in a stable format for -p.
