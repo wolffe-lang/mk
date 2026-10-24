@@ -122,7 +122,12 @@ fn build_target(
         }
         if exit_code != 0 && !ignore_errors {
             eprint("mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}")
-            return BuildResult { name: name, success: false, exit_code: exit_code, prereq_failed: false }
+            return BuildResult {
+                name: name,
+                success: false,
+                exit_code: exit_code,
+                prereq_failed: false,
+            }
         }
         if exit_code != 0 && ignore_errors {
             if !silent {

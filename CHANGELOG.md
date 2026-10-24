@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Recipe continuations: a continued line keeps its newline and loses one tab;
+  the error line number is the first recipe line plus the logical index
+
 ## 0.2.0 (2026-10-23)
 
 ### Changed
