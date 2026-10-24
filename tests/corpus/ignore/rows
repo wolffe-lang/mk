@@ -1,0 +1,6 @@
+j3 -j 2
+again
+again-j2 -j 2
+d1 -n -j 2
+s1 -s
+s1j -s -j 2
