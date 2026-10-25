@@ -27,6 +27,7 @@ fn parse_makefile_ok(text: str) -> Database {
         rules: List[Rule](),
         phonies: List[Phony](),
         includes: List[Include](),
+        defines: List[Define](),
         refusals: List[Refusal](),
     }
 }
@@ -84,7 +85,7 @@ fn test_check_refusal_ifeq() {
 }
 
 fn test_check_refusal_define() {
-    assert(check_refusal("define FOO").len > 0, "define refused")
+    assert(check_refusal("define FOO").len == 0, "define is accepted")
 }
 
 fn test_check_refusal_suffixes() {
@@ -330,4 +331,21 @@ fn test_vars_single_char_followed_by_text() {
     let v = new_vars()
     set_var(mut v, "x", "one", "=", 1)
     assert((expand(v, "$xy", 2) else "") == "oney", "$x followed by text")
+}
+
+fn test_split_recipe_lines_continuation() {
+    // "a \\\nb\nc" splits into two lines: the backslash-newline is a continuation
+    let lines = split_recipe_lines("a \\\nb\nc")
+    assert(lines.len == 2, "two lines: continuation stays together")
+    assert(lines[0] == "a \\\nb", "first line includes continuation")
+    assert(lines[1] == "c", "second line is bare")
+}
+
+fn test_split_recipe_lines_bare_newlines() {
+    // "x\n\ny" splits into three lines: the empty line is preserved
+    let lines = split_recipe_lines("x\n\ny")
+    assert(lines.len == 3, "three lines: empty line preserved")
+    assert(lines[0] == "x", "first line")
+    assert(lines[1] == "", "empty line")
+    assert(lines[2] == "y", "third line")
 }

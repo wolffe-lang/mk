@@ -47,6 +47,14 @@ struct CondEntry {
     else_seen: bool,
 }
 
+/// A parsed define directive.
+struct Define {
+    name: str,
+    op: str,
+    value: str,
+    line: int,
+}
+
 /// A refusal to parse a construct.
 struct Refusal {
     kind: str,
@@ -72,6 +80,7 @@ struct Database {
     rules: List[Rule],
     phonies: List[Phony],
     includes: List[Include],
+    defines: List[Define],
     refusals: List[Refusal],
 }
 
@@ -207,10 +216,6 @@ fn check_refusal(line: str) -> str {
     // Pattern rules: contain % in the target
     if line.contains("%") {
         return "pattern rules are not supported"
-    }
-    // define/endef
-    if line.starts_with("define ") || line.starts_with("endef") {
-        return "define is not supported"
     }
     // .SUFFIXES
     if line.starts_with(".SUFFIXES") {
@@ -367,6 +372,58 @@ fn parse_include(line: str, line_num: int) -> Include ! {none} {
     return Include {
         names: names,
         optional: optional,
+        line: line_num,
+    }
+}
+
+/// Parse a define line. Returns the define directive, or empty if it's not a define.
+fn parse_define(line: str, line_num: int) -> Define ! {none} {
+    // Check for define NAME, define NAME =, define NAME :=, define NAME +=, define NAME ?=
+    if !line.starts_with("define ") {
+        return none
+    }
+    let rest = line[7..].trim()
+    if rest.len == 0 {
+        return none
+    }
+    // Check for operator
+    let op = if rest.contains(":=") {
+        ":="
+    } else if rest.contains("+=") {
+        "+="
+    } else if rest.contains("?=") {
+        "?="
+    } else if rest.contains("=") {
+        "="
+    } else {
+        "="
+    }
+    // Extract the name
+    let name = if op == "=" || op == ":=" || op == "+=" || op == "?=" {
+        let eq_pos = if op == ":=" {
+            rest.find(":=") else 0
+        } else if op == "+=" {
+            rest.find("+=") else 0
+        } else if op == "?=" {
+            rest.find("?=") else 0
+        } else {
+            rest.find("=") else 0
+        }
+        if eq_pos <= 0 {
+            rest
+        } else {
+            rest[0..eq_pos].trim()
+        }
+    } else {
+        rest
+    }
+    if name.len == 0 {
+        return none
+    }
+    return Define {
+        name: name,
+        op: op,
+        value: "",
         line: line_num,
     }
 }
@@ -538,6 +595,7 @@ fn parse_makefile(
         rules: List[Rule](),
         phonies: List[Phony](),
         includes: List[Include](),
+        defines: List[Define](),
         refusals: List[Refusal](),
     }
 
@@ -559,6 +617,8 @@ fn parse_makefile(
     }
     // Conditional stack: each entry tracks whether lines are live
     var cond_stack = List[CondEntry]()
+    // Define stack: each entry tracks the define directive and accumulated body
+    var define_stack = List[Define]()
     while line_num < logical_lines.len {
         let line = logical_lines[line_num].text
         let line_number = logical_lines[line_num].line
@@ -686,6 +746,72 @@ fn parse_makefile(
             continue
         }
 
+        // Check for define/endef directives
+        if stripped == "endef" {
+            // Check if we're in a define
+            if define_stack.len == 0 {
+                // Extra endef: treat as missing separator
+                eprint("{file}:{line_number}: *** missing separator.  Stop.")
+                return parse
+            }
+            // Pop the define stack by keeping all but the last element
+            var tmp = List[Define]()
+            var i = 0
+            while i < define_stack.len - 1 {
+                (mut tmp).push(define_stack[i])
+                i += 1
+            }
+            // Get the last element (the one being popped)
+            var top = define_stack[define_stack.len - 1]
+            define_stack = tmp
+            // Apply the define to the variable table
+            if top.op == ":=" {
+                // Immediate expansion
+                let expanded = expand(v, top.value, top.line) else |e| match e {
+                    unterminated(l) => {
+                        eprint("{file}:{l}: *** unterminated variable reference.  Stop.")
+                        return parse
+                    },
+                    cycle(l, n) => {
+                        eprint(
+                            "{file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
+                        )
+                        return parse
+                    },
+                }
+                set_var(mut v, top.name, expanded, top.op, top.line)
+            } else {
+                // Recursive expansion (store the value as-is)
+                set_var(mut v, top.name, top.value, top.op, top.line)
+            }
+            // Store the define
+            (mut db.defines).push(top)
+            // Also add to assignments for -p output
+            (mut db.assignments).push(Assignment {
+                name: top.name,
+                op: top.op,
+                value: top.value,
+                line: top.line,
+            })
+            line_num += 1
+            continue
+        }
+        // Check for define NAME
+        if stripped.starts_with("define ") {
+            // Parse the define directive
+            let define = parse_define(stripped, line_number) else |e| match e {
+                none => {
+                    // Not a define, fall through to normal parsing
+                    line_num += 1
+                    continue
+                },
+            }
+            // Push onto the define stack
+            (mut define_stack).push(define)
+            line_num += 1
+            continue
+        }
+
         // Check if lines are live (based on the conditional stack)
         var is_live = true
         if cond_stack.len > 0 {
@@ -695,6 +821,21 @@ fn parse_makefile(
         }
         // If not live, skip this line
         if !is_live {
+            line_num += 1
+            continue
+        }
+
+        // If we're inside a define block, accumulate the line as body text
+        if define_stack.len > 0 {
+            // Append the line to the current define's body
+            let top_idx = define_stack.len - 1
+            var top = define_stack[top_idx]
+            if top.value.len > 0 {
+                top.value = top.value + "\n" + line
+            } else {
+                top.value = line
+            }
+            define_stack[top_idx] = top
             line_num += 1
             continue
         }
@@ -848,6 +989,14 @@ fn parse_makefile(
         // The error line is the last line + 1
         let last_line = logical_lines[logical_lines.len - 1].line
         eprint("{file}:{last_line + 1}: *** missing 'endif'.  Stop.")
+        return parse
+    }
+
+    // Check for open defines (missing endef)
+    if define_stack.len > 0 {
+        // The error line is the line of the define
+        let define_line = define_stack[0].line
+        eprint("{file}:{define_line}: *** missing 'endef', unterminated 'define'.  Stop.")
         return parse
     }
 

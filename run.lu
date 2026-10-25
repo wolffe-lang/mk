@@ -44,6 +44,25 @@ struct Flight {
     recipe_line: int,
 }
 
+/// Split an expanded recipe line into the lines the shell runs one by one.
+/// A newline ends a line unless a backslash precedes it: that pair is a
+/// continuation the shell sees (recipe_for_shell), so it stays inside the
+/// line. A define body's bare newlines become separate recipe lines.
+fn split_recipe_lines(s: str) -> List[str] {
+    var result = List[str]()
+    var start = 0
+    var i = 0
+    while i < s.len {
+        if s[i..i + 1] == "\n" && (i == 0 || s[i - 1..i] != "\\") {
+            (mut result).push(s[start..i])
+            start = i + 1
+        }
+        i += 1
+    }
+    (mut result).push(s[start..])
+    return result
+}
+
 /// Prepare a recipe line for the shell.
 /// A recipe line stored in the database may contain backslash-newline pairs
 /// from continuations. GNU make removes one tab that follows each such pair.
@@ -114,46 +133,58 @@ fn build_target(
             },
         }
         let final_line = expand_auto(expanded, name, first_prereq, all_prereqs, newer_prereqs_str)
-        var line = final_line
-        var ignore_errors = false
-        var is_silent = false
-        if line.starts_with("@") {
-            is_silent = true
-            line = line[1..]
-        }
-        if line.starts_with("-") {
-            ignore_errors = true
-            line = line[1..]
-        }
-        if !is_silent && !silent {
-            print(line)
-        }
-        // Apply recipe_for_shell to handle backslash-newline continuations
-        let shell_line = recipe_for_shell(line)
-        let cmd = process.command("/bin/sh")
-        process.push_arg(mut cmd, "-c")
-        process.push_arg(mut cmd, shell_line)
-        let exit_code = process.run(cmd) else |e| match e {
-            denied => 126,
-            invalid => 127,
-            io => 126,
-            not_found => 127,
-            signal => 128,
-            unsupported => 127,
-        }
-        if exit_code != 0 && !ignore_errors {
-            eprint("mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}")
-            return BuildResult {
-                name: name,
-                success: false,
-                exit_code: exit_code,
-                prereq_failed: false,
+        // Split the expanded value by newlines, but only on bare newlines
+        // (backslash-newline is a continuation, not a line break)
+        let lines = split_recipe_lines(final_line)
+        var j = 0
+        while j < lines.len {
+            var line = lines[j]
+            var ignore_errors = false
+            var is_silent = false
+            if line.starts_with("@") {
+                is_silent = true
+                line = line[1..]
             }
-        }
-        if exit_code != 0 && ignore_errors {
-            if !silent {
-                eprint("mk: [{makefile}:{recipe_line_num}: {name}] Error {exit_code} (ignored)")
+            if line.starts_with("-") {
+                ignore_errors = true
+                line = line[1..]
             }
+            if !is_silent && !silent {
+                print(line)
+            }
+            // Apply recipe_for_shell to handle backslash-newline continuations
+            let shell_line = recipe_for_shell(line)
+            // Only run the shell if the line is not empty
+            if shell_line.len > 0 {
+                let cmd = process.command("/bin/sh")
+                process.push_arg(mut cmd, "-c")
+                process.push_arg(mut cmd, shell_line)
+                let exit_code = process.run(cmd) else |e| match e {
+                    denied => 126,
+                    invalid => 127,
+                    io => 126,
+                    not_found => 127,
+                    signal => 128,
+                    unsupported => 127,
+                }
+                if exit_code != 0 && !ignore_errors {
+                    eprint("mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}")
+                    return BuildResult {
+                        name: name,
+                        success: false,
+                        exit_code: exit_code,
+                        prereq_failed: false,
+                    }
+                }
+                if exit_code != 0 && ignore_errors {
+                    if !silent {
+                        eprint(
+                            "mk: [{makefile}:{recipe_line_num}: {name}] Error {exit_code} (ignored)",
+                        )
+                    }
+                }
+            }
+            j += 1
         }
         i += 1
     }
