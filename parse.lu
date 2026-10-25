@@ -516,6 +516,19 @@ fn parse_conditional(line: str) -> str {
     if line == "endif" {
         return "endif"
     }
+    // else ifeq … / else ifneq … / else ifdef … / else ifndef …
+    if line.starts_with("else ifeq") {
+        return "else ifeq"
+    }
+    if line.starts_with("else ifneq") {
+        return "else ifneq"
+    }
+    if line.starts_with("else ifdef") {
+        return "else ifdef"
+    }
+    if line.starts_with("else ifndef") {
+        return "else ifndef"
+    }
     if line.starts_with("ifeq") {
         return "ifeq"
     }
@@ -538,9 +551,15 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
     parse,
     Parse(ParseErr),
 } {
-    if kind == "ifdef" || kind == "ifndef" {
+    // Handle else-if forms: "else ifeq", "else ifneq", "else ifdef", "else ifndef"
+    let actual_kind = if kind.starts_with("else ") {
+        kind[5..]
+    } else {
+        kind
+    }
+    if actual_kind == "ifdef" || actual_kind == "ifndef" {
         // Extract the variable name
-        let name = if kind == "ifdef" {
+        let name = if actual_kind == "ifdef" {
             line[5..].trim()
         } else {
             line[7..].trim()
@@ -554,17 +573,29 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         // Check if the variable has a non-empty value
         let val = var_value(v, expanded)
         let is_set = val.len > 0
-        if kind == "ifndef" {
+        if actual_kind == "ifndef" {
             return !is_set
         }
         return is_set
     }
     // ifeq or ifneq
     // Parse the arguments: (a,b) or "a" "b" or 'a' 'b'
-    let rest = if kind == "ifeq" {
-        line[4..].trim()
+    let rest = if actual_kind == "ifeq" {
+        // For "else ifeq", strip "else " prefix first
+        let line_rest = if kind.starts_with("else ") {
+            line[5..]
+        } else {
+            line
+        }
+        line_rest[4..].trim()
     } else {
-        line[6..].trim()
+        // For "else ifneq", strip "else " prefix first
+        let line_rest = if kind.starts_with("else ") {
+            line[5..]
+        } else {
+            line
+        }
+        line_rest[6..].trim()
     }
     // Check for (a,b) syntax
     if rest.starts_with("(") {
@@ -586,59 +617,67 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
                 message: "invalid syntax in conditional",
             })
         }
-        let left = inner[0..comma].trim()
-        let right = inner[comma + 1..].trim()
+        let left = inner[0..comma]
+        let right = inner[comma + 1..]
+        // Strip leading whitespace only (gmake's rule: leading whitespace removed, trailing kept)
+        let left_trimmed = left.trim_start()
+        let right_trimmed = right.trim_start()
         // Expand both sides
-        let left_expanded = expand(v, left, line_num) else |e| match e {
+        let left_expanded = expand(v, left_trimmed, line_num) else |e| match e {
             Unterminated(l) => return parse,
             Cycle(l, n) => return parse,
             Refuse(l, msg) => return parse,
         }
-        let right_expanded = expand(v, right, line_num) else |e| match e {
+        let right_expanded = expand(v, right_trimmed, line_num) else |e| match e {
             Unterminated(l) => return parse,
             Cycle(l, n) => return parse,
             Refuse(l, msg) => return parse,
         }
-        // Compare after stripping whitespace
-        let left_trimmed = left_expanded.trim()
-        let right_trimmed = right_expanded.trim()
+        // Compare byte for byte (no trimming after expansion)
         if kind == "ifneq" {
-            return left_trimmed != right_trimmed
+            return left_expanded != right_expanded
         }
-        return left_trimmed == right_trimmed
+        return left_expanded == right_expanded
     }
-    // Check for "a" "b" or 'a' 'b' syntax
-    if rest.starts_with("\"") || rest.starts_with("'") {
-        let quote = rest[0..1]
-        // Find the closing quote for the first argument
-        let close1 = rest.find(quote) else 0
-        if close1 <= 1 {
+    // Check for "a" "b" or 'a' 'b' or mixed 'a' "b" / "a" 'b' syntax
+    let dq = "\""
+    let sq = "'"
+    if rest.starts_with(dq) || rest.starts_with(sq) {
+        let quote1 = rest[0..1]
+        // Find the closing quote for the first argument (skip the opening quote at index 0)
+        let close1 = rest[1..].find(quote1) else 0
+        if close1 <= 0 {
             return Parse(ParseErr {
                 file: "",
                 line: line_num,
                 message: "invalid syntax in conditional",
             })
         }
-        let left = rest[1..close1]
-        // Skip whitespace and find the second quote
-        let rest2 = rest[close1 + 1..].trim()
-        if !rest2.starts_with(quote) {
+        // close1 is the offset within rest[1..], so the actual index is close1 + 1
+        let left = rest[1..close1 + 1]
+        // Skip whitespace and find the second quote (can be " or ')
+        let rest2 = rest[close1 + 2..].trim()
+        let quote2 = if rest2.starts_with(dq) {
+            dq
+        } else if rest2.starts_with(sq) {
+            sq
+        } else {
             return Parse(ParseErr {
                 file: "",
                 line: line_num,
                 message: "invalid syntax in conditional",
             })
         }
-        let close2 = rest2.find(quote) else 0
-        if close2 <= 1 {
+        let close2 = rest2[1..].find(quote2) else 0
+        if close2 <= 0 {
             return Parse(ParseErr {
                 file: "",
                 line: line_num,
                 message: "invalid syntax in conditional",
             })
         }
-        let right = rest2[1..close2]
-        // Expand both sides
+        let right = rest2[1..close2 + 1]
+        // Expand both sides (no trimming — the text between quotes is exact)
         let left_expanded = expand(v, left, line_num) else |e| match e {
             Unterminated(l) => return parse,
             Cycle(l, n) => return parse,
@@ -649,13 +688,11 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
             Cycle(l, n) => return parse,
             Refuse(l, msg) => return parse,
         }
-        // Compare after stripping whitespace
-        let left_trimmed = left_expanded.trim()
-        let right_trimmed = right_expanded.trim()
+        // Compare byte for byte (no trimming after expansion)
         if kind == "ifneq" {
-            return left_trimmed != right_trimmed
+            return left_expanded != right_expanded
         }
-        return left_trimmed == right_trimmed
+        return left_expanded == right_expanded
     }
     // Invalid syntax
     return Parse(ParseErr {
@@ -792,6 +829,46 @@ fn parse_makefile(
                 line_num += 1
                 continue
             }
+            // Handle else-if forms: "else ifeq", "else ifneq", "else ifdef", "else ifndef"
+            if cond_kind.starts_with("else ") {
+                // Check if we're in a conditional
+                if cond_stack.len == 0 {
+                    eprint("{file}:{line_number}: *** extraneous 'else'.  Stop.")
+                    return parse
+                }
+                // Check if else has already been seen on the top entry
+                let top_idx = cond_stack.len - 1
+                if cond_stack[top_idx].else_seen {
+                    eprint("{file}:{line_number}: *** only one 'else' per conditional.  Stop.")
+                    return parse
+                }
+                // Mark else_seen on the top entry
+                var entry = cond_stack[top_idx]
+                entry.else_seen = true
+                cond_stack[top_idx] = entry
+                // If the top entry is live, the else-if is ignored (lines are not live)
+                if cond_stack[top_idx].live {
+                    // Push a new entry for the else-if branch (not live)
+                    (mut cond_stack).push(CondEntry { live: false, else_seen: false, line: line_number })
+                    line_num += 1
+                    continue
+                }
+                // The top entry is not live; evaluate the else-if condition
+                let result = eval_conditional(v, stripped, cond_kind, line_number) else |e| match e {
+                    parse => {
+                        eprint("{file}:{line_number}: *** invalid syntax in conditional.  Stop.")
+                        return parse
+                    },
+                    Parse(p) => {
+                        eprint("{file}:{line_number}: *** {p.message}.  Stop.")
+                        return parse
+                    },
+                }
+                // Push a new entry for the else-if branch
+                (mut cond_stack).push(CondEntry { live: result, else_seen: false, line: line_number })
+                line_num += 1
+                continue
+            }
             if cond_kind == "endif" {
                 // Check if we're in a conditional
                 if cond_stack.len == 0 {
@@ -799,14 +876,8 @@ fn parse_makefile(
                     eprint("{file}:{line_number}: *** missing 'endif'.  Stop.")
                     return parse
                 }
-                // Pop the stack
-                var tmp = List[CondEntry]()
-                var i = 0
-                while i < cond_stack.len - 1 {
-                    (mut tmp).push(cond_stack[i])
-                    i += 1
-                }
-                cond_stack = tmp
+                // Pop all entries (gmake's endif closes all open conditionals)
+                cond_stack = List[CondEntry]()
                 line_num += 1
                 continue
             }
