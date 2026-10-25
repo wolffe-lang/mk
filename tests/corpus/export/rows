@@ -1,0 +1,6 @@
+plain
+envx --env X=env --
+e --env X=env -- -e
+all -f all.mk
+un -f un.mk
+ov -f ov.mk A=cli
