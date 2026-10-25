@@ -62,7 +62,13 @@
 - `export_environment` sets exactly the variables GNU exports: environment-origin ones,
   `export`ed ones, everything under bare `export`; an `unexport`ed name is removed
 - `tests/corpus/export/` — exercises export, unexport, override, and `-e`
-- README updated with new accepted constructs and test counts (50 unit tests, 123 corpus rows)
+- `tests/corpus/recursion/` — exercises recursive make invocations with `$(MAKE)`
+- `$(MAKE)` in a recipe line is run under `-n` (dry-run mode), like `+` prefix lines,
+  so recursive make invocations work correctly in dry-run mode
+- Sub-makes inherit flags from `MAKEFLAGS` in the environment, matching GNU make's behavior
+- `MAKELEVEL` is read from the environment and incremented for sub-makes
+- The `mk[N]:` prefix is used for error messages in sub-makes
+- README updated with new accepted constructs and test counts (50 unit tests, 155 corpus rows)
 
 ## 0.2.1 (2026-10-23)
 
