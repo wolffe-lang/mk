@@ -69,6 +69,11 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `ifeq` / `ifneq` / `ifdef` / `ifndef` / `else` / `endif` | `ifeq ($(A),$(B))` |
 | `define` / `endef` | `define NAME` … `endef` |
 | `undefine` | `undefine NAME` |
+| `override NAME = v` | `override A = 2` (wins over CLI) |
+| `export NAME` / `export NAME = v` | `export Y = 2` |
+| `export` (bare) | every variable exported |
+| `unexport NAME` | `unexport HOME` |
+| `-e` | environment variables override Makefile assignments |
 
 ### Refused (exit 2, one line on stderr naming the construct)
 
@@ -113,8 +118,8 @@ A prerequisite with no rule that does not exist is an error:
 
 ```
 wolf build main.lu -o mk
-wolf test .              # 48 unit tests
-./test.sh                # 113 corpus rows against GNU make
+wolf test .              # 50 unit tests
+./test.sh                # 123 corpus rows against GNU make
 wolf fmt --check *.lu
 ```
 
@@ -127,7 +132,7 @@ name, the rest are the arguments). A name starting with `again` compares the sec
 of each tool. A copy is cleaned to the directory's git-tracked files. The harness finds
 every `tests/corpus/*/rows` and feeds them into the matrix.
 
-The 113 rows cover 14 directories across 19 test kinds: N1 (dry-run output), B1 (files
+The 123 rows cover 15 directories across 19 test kinds: N1 (dry-run output), B1 (files
 after build), B2 (second run), B3 (build from a subset), F1 (failure with `-k`), M1
 (missing target), C1 (cycle), J1 (wide build), J2 (diamond with `-j`), R1 (refusals),
 P1 (print database), J3 (parallel), U1/U2 (second-run comparison), D1 (dry-run with

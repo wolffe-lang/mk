@@ -22,7 +22,7 @@ fn parse_makefile_ok(text: str) -> Database {
     var v = new_vars()
     var cli_names = Map[str, int]()
     var include_dirs = List[str]()
-    parse_makefile(text, "Makefile", mut v, cli_names, include_dirs) else Database {
+    parse_makefile(text, "Makefile", mut v, cli_names, include_dirs, false) else Database {
         assignments: List[Assignment](),
         rules: List[Rule](),
         phonies: List[Phony](),

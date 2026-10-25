@@ -6,6 +6,7 @@
 use std.fs
 use std.str
 use std.map
+use std.env
 
 /// A parsed assignment: NAME op VALUE.
 struct Assignment {
@@ -589,6 +590,7 @@ fn parse_makefile(
     mut v: Vars,
     cli_names: Map[str, int],
     include_dirs: List[str],
+    env_wins: bool,
 ) -> Database ! {parse, Parse(ParseErr), io} {
     var db = Database {
         assignments: List[Assignment](),
@@ -832,6 +834,121 @@ fn parse_makefile(
             line_num += 1
             continue
         }
+        // Check for export NAME, export NAME = v, or bare export
+        if stripped.starts_with("export ") || stripped == "export" {
+            if stripped == "export" {
+                // Bare export: export all variables
+                v.export_all = true
+                line_num += 1
+                continue
+            }
+            // export NAME or export NAME = v
+            let rest = stripped[7..].trim()
+            if rest.len == 0 {
+                line_num += 1
+                continue
+            }
+            // Check for operator
+            let op = if rest.contains(":=") {
+                ":="
+            } else if rest.contains("+=") {
+                "+="
+            } else if rest.contains("?=") {
+                "?="
+            } else if rest.contains("=") {
+                "="
+            } else {
+                ""
+            }
+            // Extract the name
+            let name = if op.len > 0 {
+                let eq_pos = if op == ":=" {
+                    rest.find(":=") else 0
+                } else if op == "+=" {
+                    rest.find("+=") else 0
+                } else if op == "?=" {
+                    rest.find("?=") else 0
+                } else {
+                    rest.find("=") else 0
+                }
+                if eq_pos <= 0 {
+                    rest
+                } else {
+                    rest[0..eq_pos].trim()
+                }
+            } else {
+                rest
+            }
+            if name.len == 0 {
+                line_num += 1
+                continue
+            }
+            // Set the exported flag
+            set_var_exported(mut v, name, true)
+            // If there's an operator, also set the value
+            if op.len > 0 {
+                let value = if op == ":=" {
+                    let p = (rest.find(":=") else 0) + 2
+                    rest[p..].trim()
+                } else if op == "+=" {
+                    let p = (rest.find("+=") else 0) + 2
+                    rest[p..].trim()
+                } else if op == "?=" {
+                    let p = (rest.find("?=") else 0) + 2
+                    rest[p..].trim()
+                } else {
+                    let p = (rest.find("=") else 0) + 1
+                    rest[p..].trim()
+                }
+                set_var(mut v, name, value, op, line_number)
+                // Re-set the exported flag (set_var may have created a new Var)
+                set_var_exported(mut v, name, true)
+            }
+            line_num += 1
+            continue
+        }
+        // Check for unexport NAME or bare unexport
+        if stripped.starts_with("unexport ") || stripped == "unexport" {
+            if stripped == "unexport" {
+                // Bare unexport: clear export_all and unexport all variables
+                v.export_all = false
+                // Unexport all variables in the table
+                for name in map.keys(v.table) {
+                    (mut v.unexported).push(name)
+                }
+                line_num += 1
+                continue
+            }
+            // unexport NAME
+            let name = stripped[9..].trim()
+            if name.len > 0 {
+                // Add to the unexported list
+                (mut v.unexported).push(name)
+                // Clear the exported flag
+                set_var_exported(mut v, name, false)
+            }
+            line_num += 1
+            continue
+        }
+        // Check for override NAME = v (also handled by set_var_skip)
+        if stripped.starts_with("override ") {
+            // Strip the override prefix
+            let rest = stripped[9..].trim()
+            // Parse as an assignment
+            let assignment = parse_assignment(rest, line_number) else |e| match e {
+                none => {
+                    // Not an assignment, fall through to normal parsing
+                    line_num += 1
+                    continue
+                },
+            }
+            // Apply the assignment, skipping CLI overrides
+            set_var(mut v, assignment.name, assignment.value, assignment.op, assignment.line)
+            // Store the assignment for -p output
+            (mut db.assignments).push(assignment)
+            line_num += 1
+            continue
+        }
 
         // Check if lines are live (based on the conditional stack)
         var is_live = true
@@ -870,7 +987,14 @@ fn parse_makefile(
                         // Not an include, try as .PHONY first (before rule, since .PHONY: looks like a rule)
                         let phony = parse_phony(stripped, line_number) else |e3| match e3 {
                             none => {
-                                // Not .PHONY, try as rule
+                                // Not .PHONY, check for .EXPORT_ALL_VARIABLES
+                                if stripped == ".EXPORT_ALL_VARIABLES:" ||
+                                    stripped == ".EXPORT_ALL_VARIABLES" {
+                                    v.export_all = true
+                                    line_num += 1
+                                    continue
+                                }
+                                // Not .EXPORT_ALL_VARIABLES, try as rule
                                 let rule = parse_rule(stripped, line_number) else |e2| match e2 {
                                     none => {
                                         // Unknown line: not blank, not a comment, not a recipe line,
@@ -931,6 +1055,7 @@ fn parse_makefile(
                             mut v,
                             cli_names,
                             include_dirs,
+                            env_wins,
                         ) else |e| match e {
                             parse => {
                                 if !include.optional {
@@ -995,6 +1120,16 @@ fn parse_makefile(
         (mut db.assignments).push(assignment)
         // Apply the assignment to the variable table, respecting CLI overrides
         if !map.has(cli_names, assignment.name) {
+            // If env_wins is true, check if the variable is in the environment
+            if env_wins {
+                let env_val = env.get(assignment.name) else ""
+                if env_val.len > 0 {
+                    // Environment wins: use the environment value
+                    set_var(mut v, assignment.name, env_val, ":=", assignment.line)
+                    line_num += 1
+                    continue
+                }
+            }
             set_var(mut v, assignment.name, assignment.value, assignment.op, assignment.line)
         }
         line_num += 1
@@ -1031,6 +1166,7 @@ fn parse_makefile_file(
     mut v: Vars,
     cli_names: Map[str, int],
     include_dirs: List[str],
+    env_wins: bool,
 ) -> Database ! {parse, Parse(ParseErr), io} {
     let text = fs.read_text(path) else |e| match e {
         io => return io,
@@ -1038,7 +1174,7 @@ fn parse_makefile_file(
         not_found => return io,
         utf8 => return parse,
     }
-    parse_makefile(text, path, mut v, cli_names, include_dirs)
+    parse_makefile(text, path, mut v, cli_names, include_dirs, env_wins)
 }
 
 /// Print the database in a stable format for -p.

@@ -36,12 +36,13 @@ struct Flags {
     overrides: List[str],
     goals: List[str],
     include_dirs: List[str],
+    env_wins: bool,
 }
 
 /// Print usage and exit 0.
 fn print_usage() -> int {
     print(
-        "Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE]... [GOAL]...",
+        "Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [-e] [NAME=VALUE]... [GOAL]...",
     )
     print("       mk --help")
     print("       mk --version")
@@ -54,6 +55,7 @@ fn print_usage() -> int {
     print("  -f FILE    read FILE as the Makefile")
     print("  -C DIR     change to DIR before doing anything")
     print("  -I DIR     search DIR for included makefiles")
+    print("  -e         environment variables override Makefile assignments")
     print("  --version  print the version and exit")
     print("  NAME=VALUE set a variable from the command line")
     0
@@ -87,6 +89,9 @@ fn parse_arg(arg: str) -> str {
     }
     if arg == "-p" {
         return "print_db"
+    }
+    if arg == "-e" {
+        return "env_wins"
     }
     if arg == "-f" {
         return "file_flag"
@@ -163,6 +168,7 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, Parse(ParseError)} {
         overrides: List[str](),
         goals: List[str](),
         include_dirs: List[str](),
+        env_wins: false,
     }
     var i = 0
     while i < args.len {
@@ -195,6 +201,11 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, Parse(ParseError)} {
         }
         if kind == "print_db" {
             f.print_db = true
+            i += 1
+            continue
+        }
+        if kind == "env_wins" {
+            f.env_wins = true
             i += 1
             continue
         }
@@ -307,7 +318,13 @@ fn run(mut f: Flags) -> int {
     // Set MAKEFILE_LIST to the main file
     set_var(mut v, "MAKEFILE_LIST", f.file, "=", 0)
     if f.print_db {
-        let db = parse_makefile_file(f.file, mut v, cli_names, f.include_dirs) else |e| match e {
+        let db = parse_makefile_file(
+            f.file,
+            mut v,
+            cli_names,
+            f.include_dirs,
+            f.env_wins,
+        ) else |e| match e {
             parse => {
                 return 2
             },
@@ -338,7 +355,13 @@ fn run(mut f: Flags) -> int {
         return 0
     }
     // Parse the Makefile
-    let db = parse_makefile_file(f.file, mut v, cli_names, f.include_dirs) else |e| match e {
+    let db = parse_makefile_file(
+        f.file,
+        mut v,
+        cli_names,
+        f.include_dirs,
+        f.env_wins,
+    ) else |e| match e {
         parse => {
             return 2
         },
@@ -362,6 +385,13 @@ fn run(mut f: Flags) -> int {
         let r = db.refusals[0]
         eprint("mk: {f.file}:{r.line}: {r.kind}")
         return 2
+    }
+    // Export the environment for recipes
+    export_environment(v) else |e| match e {
+        invalid => {
+            eprint("mk: *** invalid variable name.  Stop.")
+            return 2
+        },
     }
     // Build the graph
     let g = build_graph(db, v, f.file) else |e| match e {
