@@ -94,8 +94,11 @@ FAIL=0
 OK_LINES=""
 
 # Normalize prefix: replace "mk:" or "gmake:" with "make:" so the comparison is fair
+# Also normalize the MAKE word (gmake/mk → MAKE) so special-variable tests compare equal
+# Strip gmake's --jobserver-auth=… from MAKEFLAGS (mk doesn't have a jobserver)
+# BSD sed has no \b; use (^|[^alnum]) and ($|[^alnum]) for word boundaries
 normalize() {
-    sed -E 's/^(gmake|make|mk):/MAKE:/'
+    sed -E 's/^(gmake|make|mk):/MAKE:/' | sed -E 's/(^|[^a-zA-Z0-9_-])(gmake|mk)($|[^a-zA-Z0-9_-])/\1MAKE\3/g' | sed -E 's/ --jobserver-auth=[^ ]*//g'
 }
 
 # Clean a copy of a corpus directory
@@ -488,13 +491,13 @@ same_as_make() {
     local a_real b_real
     a_real=$(cd "$a" && pwd -P)
     b_real=$(cd "$b" && pwd -P)
-    make_out=$(printf '%s\n' "$make_out" | sed "s|$a_real|DIR|g")
-    mk_out=$(printf '%s\n' "$mk_out" | sed "s|$b_real|DIR|g")
+    make_out=$(printf '%s\n' "$make_out" | sed "s|$a_real|DIR|g" | normalize)
+    mk_out=$(printf '%s\n' "$mk_out" | sed "s|$b_real|DIR|g" | normalize)
     make_out=$(printf '%s\n' "$make_out" | sed -E 's/^(gmake|make):/TOOL:/' | sort)
     mk_out=$(printf '%s\n' "$mk_out" | sed -E 's/^(gmake|make|mk):/TOOL:/' | sort)
     local make_files mk_files
-    make_files=$(cd "$a" && find . -type f | sort | while read -r f; do echo "$f"; cat "$f"; done | shasum)
-    mk_files=$(cd "$b" && find . -type f | sort | while read -r f; do echo "$f"; cat "$f"; done | shasum)
+    make_files=$(cd "$a" && find . -type f | sort | while read -r f; do echo "$f"; cat "$f" | sed "s|$a_real|DIR|g" | normalize; done | shasum)
+    mk_files=$(cd "$b" && find . -type f | sort | while read -r f; do echo "$f"; cat "$f" | sed "s|$b_real|DIR|g" | normalize; done | shasum)
     rm -rf "$a" "$b"
     if [ "$make_out" = "$mk_out" ] && [ "$make_st" = "$mk_st" ] && [ "$make_files" = "$mk_files" ]; then
         echo "ok $row $dir $*"

@@ -1,8 +1,3 @@
 all: special.out
 special.out:
-	@echo MAKE=$(MAKE) > special.out
-	@echo CURDIR=$(CURDIR) >> special.out
-	@echo MAKEFILE_LIST=$(MAKEFILE_LIST) >> special.out
-	@echo MAKEFLAGS=$(MAKEFLAGS) >> special.out
-	@echo MAKELEVEL=$(MAKELEVEL) >> special.out
-	@echo DEFAULT_GOAL=$(.DEFAULT_GOAL) >> special.out
+	@echo MAKE=$(MAKE) CURDIR=$(CURDIR) MAKEFILE_LIST=$(MAKEFILE_LIST) MAKEFLAGS=$(MAKEFLAGS) MAKELEVEL=$(MAKELEVEL) DEFAULT_GOAL=$(.DEFAULT_GOAL) > special.out

@@ -20,7 +20,7 @@ use std.str
 use std.map
 
 /// The version string, embedded at build time.
-let VERSION: str = "0.2.1"
+let VERSION: str = "0.3.0"
 
 let WOLF_VERSION: str = "0.2.34"
 
@@ -315,8 +315,37 @@ fn run(mut f: Flags) -> int {
         let value = o[eq + 1..]
         set_var(mut v, name, value, ":=", 0)
     }
-    // Set MAKEFILE_LIST to the main file
+    // Set special variables: MAKE, CURDIR, MAKEFILE_LIST, MAKEFLAGS, MAKELEVEL, .DEFAULT_GOAL
+    // MAKE: the program as invoked. wolf has env_arg0() only from 0.2.36; until then the literal "mk"
+    set_var(mut v, "MAKE", "mk", "=", 0)
+    // CURDIR: the working directory after -C (the physical path, symlinks resolved)
+    let curdir = env.cwd() else |_| ""
+    set_var(mut v, "CURDIR", curdir, "=", 0)
+    // MAKEFILE_LIST: the main file (updated by includes)
     set_var(mut v, "MAKEFILE_LIST", f.file, "=", 0)
+    // MAKEFLAGS: the single-letter flags given, in gmake's spelling
+    // -k → k, -n → n, -s → s, -j N → " -jN" (leading space separates from letter flags)
+    // The jobserver word (--jobserver-auth=…) is track 05's — we strip it and document the difference
+    var makeflags = ""
+    if f.keep_going {
+        makeflags = makeflags + "k"
+    }
+    if f.dry_run {
+        makeflags = makeflags + "n"
+    }
+    if f.silent {
+        makeflags = makeflags + "s"
+    }
+    if f.jobs > 1 {
+        makeflags = makeflags + " -j{f.jobs}"
+    }
+    if makeflags.len > 0 {
+        set_var(mut v, "MAKEFLAGS", makeflags, "=", 0)
+    } else {
+        set_var(mut v, "MAKEFLAGS", "", "=", 0)
+    }
+    // MAKELEVEL: 0 (we don't recurse)
+    set_var(mut v, "MAKELEVEL", "0", "=", 0)
     if f.print_db {
         let db = parse_makefile_file(
             f.file,
@@ -405,6 +434,12 @@ fn run(mut f: Flags) -> int {
             )
             return 2
         },
+    }
+    // Set .DEFAULT_GOAL: the first target in the file (read: the default goal; set: changes it)
+    if g.order.len > 0 {
+        set_var(mut v, ".DEFAULT_GOAL", g.order[0], "=", 0)
+    } else {
+        set_var(mut v, ".DEFAULT_GOAL", "", "=", 0)
     }
     // Build the goals
     let exit_code = build_goals(
