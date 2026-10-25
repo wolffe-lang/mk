@@ -1,0 +1,2 @@
+missing-endef -f missing-endef.mk
+extra-endef -f extra-endef.mk
