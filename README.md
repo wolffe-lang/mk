@@ -67,13 +67,14 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `include` / `-include` / `sinclude` | `include $(DIR)/x.mk` |
 | `-I DIR` | search DIR for included makefiles |
 | `ifeq` / `ifneq` / `ifdef` / `ifndef` / `else` / `endif` | `ifeq ($(A),$(B))` |
+| `define` / `endef` | `define NAME` … `endef` |
+| `undefine` | `undefine NAME` |
 
 ### Refused (exit 2, one line on stderr naming the construct)
 
 | construct | message |
 |---|---|
 | pattern rules | `pattern rules are not supported` |
-| `define` / `endef` | `define is not supported` |
 | `.SUFFIXES` | `.SUFFIXES is not supported` |
 | `|` order-only prerequisites | `order-only prerequisites are not supported` |
 | `::` double-colon rules | `double-colon rules are not supported` |

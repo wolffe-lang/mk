@@ -32,7 +32,13 @@
 - `ifeq`, `ifneq`, `ifdef`, `ifndef`, `else`, `endif` are accepted: a conditional stack tracks
   which lines are live; errors include missing `endif`, extraneous `else`, two `else` in one
   conditional, and invalid syntax in `ifeq`/`ifneq`
-- README updated with new accepted constructs and test counts (48 unit tests, 113 corpus rows)
+- `define NAME` … `endef` is accepted: the body, verbatim with its newlines, becomes NAME's value;
+  `define NAME =`, `:=`, `+=`, `?=` set the flavour; nested `define` inside a body counts
+- `undefine NAME` removes the variable (`ifdef` is then false); `override define` and `override undefine`
+  are accepted (the `override` is stripped; P1.6 gives it its meaning)
+- Recipe lines split on bare newlines: a newline ends a recipe line unless a backslash precedes it
+  (that pair is a continuation the shell sees); a `define` body's bare newlines become separate lines
+- README updated with new accepted constructs and test counts (50 unit tests, 117 corpus rows)
 
 ## 0.2.1 (2026-10-23)
 
