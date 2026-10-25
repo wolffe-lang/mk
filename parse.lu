@@ -229,6 +229,11 @@ fn check_refusal(line: str) -> str {
     if line.starts_with(".SUFFIXES") {
         return ".SUFFIXES is not supported"
     }
+    // Special targets that mk does not support
+    let special_refusal = unsupported_special_target(line)
+    if special_refusal.len > 0 {
+        return special_refusal
+    }
     // Order-only prerequisites: |
     if line.contains("|") {
         return "order-only prerequisites are not supported"
@@ -240,6 +245,67 @@ fn check_refusal(line: str) -> str {
     // Functions: $(wildcard ...), $(patsubst ...), $(shell ...)
     if line.contains("$(wildcard") || line.contains("$(patsubst") || line.contains("$(shell") {
         return "functions are not supported"
+    }
+    return ""
+}
+
+/// Check if a target name is an unsupported special target.
+/// Returns the refusal message, or "" if it's allowed.
+/// The supported special targets are: .PHONY, .SUFFIXES, .DEFAULT_GOAL, .EXPORT_ALL_VARIABLES.
+/// All other gmake special targets are refused.
+fn unsupported_special_target(line: str) -> str {
+    // Extract the target name (before the first :)
+    let colon_pos = line.find(":") else 0
+    let target = if colon_pos > 0 {
+        line[0..colon_pos].trim()
+    } else {
+        line.trim()
+    }
+    // Check for known unsupported special targets
+    if target == ".ONESHELL" {
+        return ".ONESHELL is not supported"
+    }
+    if target == ".SILENT" {
+        return ".SILENT is not supported"
+    }
+    if target == ".DELETE_ON_ERROR" {
+        return ".DELETE_ON_ERROR is not supported"
+    }
+    if target == ".PRECIOUS" {
+        return ".PRECIOUS is not supported"
+    }
+    if target == ".INTERMEDIATE" {
+        return ".INTERMEDIATE is not supported"
+    }
+    if target == ".SECONDARY" {
+        return ".SECONDARY is not supported"
+    }
+    if target == ".NOTINTERMEDIATE" {
+        return ".NOTINTERMEDIATE is not supported"
+    }
+    if target == ".IGNORE" {
+        return ".IGNORE is not supported"
+    }
+    if target == ".NOTPARALLEL" {
+        return ".NOTPARALLEL is not supported"
+    }
+    if target == ".WAIT" {
+        return ".WAIT is not supported"
+    }
+    if target == ".POSIX" {
+        return ".POSIX is not supported"
+    }
+    if target == ".SECONDEXPANSION" {
+        return ".SECONDEXPANSION is not supported"
+    }
+    if target == ".EXTRA_PREREQS" {
+        return ".EXTRA_PREREQS is not supported"
+    }
+    if target == ".DEFAULT" {
+        return ".DEFAULT is not supported"
+    }
+    if target == ".LOW_RESOLUTION_TIME" {
+        return ".LOW_RESOLUTION_TIME is not supported"
     }
     return ""
 }
@@ -483,6 +549,7 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         let expanded = expand(v, name, line_num) else |e| match e {
             Unterminated(l) => return parse,
             Cycle(l, n) => return parse,
+            Refuse(l, msg) => return parse,
         }
         // Check if the variable has a non-empty value
         let val = var_value(v, expanded)
@@ -525,10 +592,12 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         let left_expanded = expand(v, left, line_num) else |e| match e {
             Unterminated(l) => return parse,
             Cycle(l, n) => return parse,
+            Refuse(l, msg) => return parse,
         }
         let right_expanded = expand(v, right, line_num) else |e| match e {
             Unterminated(l) => return parse,
             Cycle(l, n) => return parse,
+            Refuse(l, msg) => return parse,
         }
         // Compare after stripping whitespace
         let left_trimmed = left_expanded.trim()
@@ -573,10 +642,12 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         let left_expanded = expand(v, left, line_num) else |e| match e {
             Unterminated(l) => return parse,
             Cycle(l, n) => return parse,
+            Refuse(l, msg) => return parse,
         }
         let right_expanded = expand(v, right, line_num) else |e| match e {
             Unterminated(l) => return parse,
             Cycle(l, n) => return parse,
+            Refuse(l, msg) => return parse,
         }
         // Compare after stripping whitespace
         let left_trimmed = left_expanded.trim()
@@ -793,8 +864,12 @@ fn parse_makefile(
                         )
                         return parse
                     },
+                    Refuse(l, msg) => {
+                        eprint("mk: {file}:{l}: {msg}")
+                        return parse
+                    },
                 }
-                set_var(mut v, top.name, expanded, top.op, top.line)
+                set_var(mut v, top.name, expanded, "=immediate", top.line)
             } else {
                 // Recursive expansion (store the value as-is)
                 set_var(mut v, top.name, top.value, top.op, top.line)
@@ -913,7 +988,13 @@ fn parse_makefile(
                     let p = (rest.find("=") else 0) + 1
                     rest[p..].trim()
                 }
-                set_var(mut v, name, value, op, line_number)
+                set_var_checked(mut v, name, value, op, line_number) else |e| match e {
+                    Refuse(l, msg) => {
+                        (mut db.refusals).push(Refusal { kind: msg, line: l })
+                        line_num += 1
+                        continue
+                    },
+                }
                 // Re-set the exported flag (set_var may have created a new Var)
                 set_var_exported(mut v, name, true)
             }
@@ -956,7 +1037,22 @@ fn parse_makefile(
                 },
             }
             // Apply the assignment, skipping CLI overrides
-            set_var(mut v, assignment.name, assignment.value, assignment.op, assignment.line)
+            // SHELL and .SHELLFLAGS are refused until track 04 implements them
+            if assignment.name == "SHELL" || assignment.name == ".SHELLFLAGS" {
+                (mut db.refusals).push(Refusal {
+                    kind: "{assignment.name} is not supported",
+                    line: assignment.line,
+                })
+                line_num += 1
+                continue
+            }
+            set_var_checked(mut v, assignment.name, assignment.value, assignment.op, assignment.line) else |e| match e {
+                Refuse(l, msg) => {
+                    (mut db.refusals).push(Refusal { kind: msg, line: l })
+                    line_num += 1
+                    continue
+                },
+            }
             // Store the assignment for -p output
             (mut db.assignments).push(assignment)
             line_num += 1
@@ -1012,6 +1108,18 @@ fn parse_makefile(
                                     none => {
                                         // Unknown line: not blank, not a comment, not a recipe line,
                                         // not an assignment, not a rule, not a refusal.
+                                        // Check if it's a function call at top level (e.g. $(info hi))
+                                        if stripped.starts_with("$(") {
+                                            // Try to expand it; if it's a gmake function, refuse it
+                                            let _ = expand(v, stripped, line_number) else |e| match e {
+                                                Refuse(l, msg) => {
+                                                    (mut db.refusals).push(Refusal { kind: msg, line: l })
+                                                    line_num += 1
+                                                    continue
+                                                },
+                                                _ => "",
+                                            }
+                                        }
                                         // This is a "missing separator" error.
                                         return Parse(ParseErr {
                                             file: file,
@@ -1045,6 +1153,10 @@ fn parse_makefile(
                             eprint(
                                 "{file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                             )
+                            return parse
+                        },
+                        Refuse(l, msg) => {
+                            eprint("mk: {file}:{l}: {msg}")
                             return parse
                         },
                     }
@@ -1101,7 +1213,12 @@ fn parse_makefile(
                         for a in sub_db.assignments {
                             (mut db.assignments).push(a)
                             if !map.has(cli_names, a.name) {
-                                set_var(mut v, a.name, a.value, a.op, a.line)
+                                set_var_checked(mut v, a.name, a.value, a.op, a.line) else |e| match e {
+                                    Refuse(l, msg) => {
+                                        (mut db.refusals).push(Refusal { kind: msg, line: l })
+                                        continue
+                                    },
+                                }
                             }
                         }
                         for r in sub_db.rules {
@@ -1131,6 +1248,15 @@ fn parse_makefile(
         }
         // Store the assignment for -p output
         (mut db.assignments).push(assignment)
+        // SHELL and .SHELLFLAGS are refused until track 04 implements them
+        if assignment.name == "SHELL" || assignment.name == ".SHELLFLAGS" {
+            (mut db.refusals).push(Refusal {
+                kind: "{assignment.name} is not supported",
+                line: assignment.line,
+            })
+            line_num += 1
+            continue
+        }
         // Apply the assignment to the variable table, respecting CLI overrides
         if !map.has(cli_names, assignment.name) {
             // If env_wins is true, check if the variable is in the environment
@@ -1143,7 +1269,13 @@ fn parse_makefile(
                     continue
                 }
             }
-            set_var(mut v, assignment.name, assignment.value, assignment.op, assignment.line)
+            set_var_checked(mut v, assignment.name, assignment.value, assignment.op, assignment.line) else |e| match e {
+                Refuse(l, msg) => {
+                    (mut db.refusals).push(Refusal { kind: msg, line: l })
+                    line_num += 1
+                    continue
+                },
+            }
         }
         line_num += 1
     }
@@ -1312,6 +1444,10 @@ fn print_database(db: Database, v: Vars, makefile: str) -> !int {
                     eprint(
                         "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                     )
+                    return 2
+                },
+                Refuse(l, msg) => {
+                    eprint("mk: {makefile}:{l}: {msg}")
                     return 2
                 },
             }

@@ -6,15 +6,27 @@
 //! - $(NAME) and ${NAME} with balanced parens/braces
 //! - Computed names: $(A$(B)) reads variable AB's value when B is B
 //! - Substitution references: $(VAR:.c=.o) and $(VAR:%.c=%.o)
-//! - Function calls: $(foo bar) → "" (routed to call_function)
+//! - Function calls: $(foo bar) → refused with "functions are not supported"
+//!   for every gmake function name (error, subst, patsubst, strip, findstring,
+//!   filter, filter-out, sort, word, wordlist, words, firstword, lastword, dir,
+//!   notdir, suffix, basename, addsuffix, addprefix, join, wildcard, realpath,
+//!   abspath, if, or, and, intcmp, foreach, file, call, value, eval, origin,
+//!   flavor, shell, info, let).
 //! - Unterminated reference error: expand returns {Unterminated(int)} with the line
 //! - Recursive self-reference error: expand returns {Cycle(int)} with the line
+//! - Function refusal: expand returns {Refuse(int, str)} with the line and message
 
 /// Expand a string, resolving variable references.
 /// Returns {Unterminated(int)} if a $( or ${ is not closed, carrying the line number.
 /// Returns {Cycle(int, str)} if a variable references itself recursively,
 /// carrying the line number and the name of the variable that closed the cycle.
-fn expand(v: Vars, s: str, line: int) -> str ! {Unterminated(int), Cycle(int, str)} {
+/// Returns {Refuse(int, str)} if a gmake function is encountered,
+/// carrying the line number and the refusal message.
+fn expand(v: Vars, s: str, line: int) -> str ! {
+    Unterminated(int),
+    Cycle(int, str),
+    Refuse(int, str),
+} {
     expand_inner(v, s, "", line)
 }
 
@@ -24,6 +36,7 @@ fn expand(v: Vars, s: str, line: int) -> str ! {Unterminated(int), Cycle(int, st
 fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
     Unterminated(int),
     Cycle(int, str),
+    Refuse(int, str),
 } {
     var result = ""
     var i = 0
@@ -51,6 +64,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 let expanded_inside = expand_inner(v, inside, visiting, line) else |e| match e {
                     Unterminated(l) => return Unterminated(l),
                     Cycle(l, n) => return Cycle(l, n),
+                    Refuse(l, msg) => return Refuse(l, msg),
                 }
                 // Check for substitution reference: $(VAR:.c=.o) or $(VAR:%.c=%.o)
                 let sub_result = try_substitution(
@@ -61,17 +75,23 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 ) else |e| match e {
                     Unterminated(l) => return Unterminated(l),
                     Cycle(l, n) => return Cycle(l, n),
+                    Refuse(l, msg) => return Refuse(l, msg),
                 }
                 if sub_result.len > 0 {
                     result = result + sub_result
                 } else
                 // Check if it's a function call (contains whitespace)
                 if is_whitespace(expanded_inside) {
-                    // Could be a function call or a variable name with spaces.
-                    // Since we don't have functions yet, treat it as a variable name.
+                    // Check if the first word is a gmake function name
+                    let first_word = expanded_inside.words()[0]
+                    if is_gmake_function(first_word) {
+                        return Refuse(line, "functions are not supported")
+                    }
+                    // Not a known function; treat as a variable name with spaces
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
                         Unterminated(l) => return Unterminated(l),
                         Cycle(l, n) => return Cycle(l, n),
+                        Refuse(l, msg) => return Refuse(l, msg),
                     }
                     result = result + val
                 } else {
@@ -79,6 +99,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
                         Unterminated(l) => return Unterminated(l),
                         Cycle(l, n) => return Cycle(l, n),
+                        Refuse(l, msg) => return Refuse(l, msg),
                     }
                     result = result + val
                 }
@@ -96,6 +117,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 let expanded_inside = expand_inner(v, inside, visiting, line) else |e| match e {
                     Unterminated(l) => return Unterminated(l),
                     Cycle(l, n) => return Cycle(l, n),
+                    Refuse(l, msg) => return Refuse(l, msg),
                 }
                 // Check for substitution reference
                 let sub_result = try_substitution(
@@ -106,23 +128,30 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 ) else |e| match e {
                     Unterminated(l) => return Unterminated(l),
                     Cycle(l, n) => return Cycle(l, n),
+                    Refuse(l, msg) => return Refuse(l, msg),
                 }
                 if sub_result.len > 0 {
                     result = result + sub_result
                 } else
                 // Check if it's a function call (contains whitespace)
                 if is_whitespace(expanded_inside) {
-                    // Could be a function call or a variable name with spaces.
-                    // Since we don't have functions yet, treat it as a variable name.
+                    // Check if the first word is a gmake function name
+                    let first_word = expanded_inside.words()[0]
+                    if is_gmake_function(first_word) {
+                        return Refuse(line, "functions are not supported")
+                    }
+                    // Not a known function; treat as a variable name with spaces
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
                         Unterminated(l) => return Unterminated(l),
                         Cycle(l, n) => return Cycle(l, n),
+                        Refuse(l, msg) => return Refuse(l, msg),
                     }
                     result = result + val
                 } else {
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
                         Unterminated(l) => return Unterminated(l),
                         Cycle(l, n) => return Cycle(l, n),
+                        Refuse(l, msg) => return Refuse(l, msg),
                     }
                     result = result + val
                 }
@@ -134,6 +163,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 let val = expand_var(v, next, visiting) else |e| match e {
                     Unterminated(l) => return Unterminated(l),
                     Cycle(l, n) => return Cycle(l, n),
+                    Refuse(l, msg) => return Refuse(l, msg),
                 }
                 result = result + val
                 i += 2
@@ -200,10 +230,140 @@ fn is_var_char(c: str) -> bool {
     return false
 }
 
+/// Check if a name is a gmake function that mk does not implement.
+/// These are refused with "functions are not supported" from expand_inner,
+/// so the refusal comes from the expander (every $(…) passes here), not
+/// from check_refusal's line scan.
+fn is_gmake_function(name: str) -> bool {
+    // The complete list of gmake functions mk does not implement.
+    // patsubst and filter formerly said "pattern rules are not supported";
+    // the function name is the refusal, the % inside its arguments is not a pattern rule.
+    if name == "error" {
+        return true
+    }
+    if name == "warning" {
+        return true
+    }
+    if name == "info" {
+        return true
+    }
+    if name == "subst" {
+        return true
+    }
+    if name == "patsubst" {
+        return true
+    }
+    if name == "strip" {
+        return true
+    }
+    if name == "findstring" {
+        return true
+    }
+    if name == "filter" {
+        return true
+    }
+    if name == "filter-out" {
+        return true
+    }
+    if name == "sort" {
+        return true
+    }
+    if name == "word" {
+        return true
+    }
+    if name == "wordlist" {
+        return true
+    }
+    if name == "words" {
+        return true
+    }
+    if name == "firstword" {
+        return true
+    }
+    if name == "lastword" {
+        return true
+    }
+    if name == "dir" {
+        return true
+    }
+    if name == "notdir" {
+        return true
+    }
+    if name == "suffix" {
+        return true
+    }
+    if name == "basename" {
+        return true
+    }
+    if name == "addsuffix" {
+        return true
+    }
+    if name == "addprefix" {
+        return true
+    }
+    if name == "join" {
+        return true
+    }
+    if name == "wildcard" {
+        return true
+    }
+    if name == "realpath" {
+        return true
+    }
+    if name == "abspath" {
+        return true
+    }
+    if name == "if" {
+        return true
+    }
+    if name == "or" {
+        return true
+    }
+    if name == "and" {
+        return true
+    }
+    if name == "intcmp" {
+        return true
+    }
+    if name == "foreach" {
+        return true
+    }
+    if name == "file" {
+        return true
+    }
+    if name == "call" {
+        return true
+    }
+    if name == "value" {
+        return true
+    }
+    if name == "eval" {
+        return true
+    }
+    if name == "origin" {
+        return true
+    }
+    if name == "flavor" {
+        return true
+    }
+    if name == "shell" {
+        return true
+    }
+    if name == "let" {
+        return true
+    }
+    return false
+}
+
 /// Expand a variable reference, with cycle detection.
 /// Returns the expanded value, or {Cycle(int, str)} if a cycle is detected,
 /// carrying the line number and the name of the variable that closed the cycle.
-fn expand_var(v: Vars, name: str, visiting: str) -> str ! {Unterminated(int), Cycle(int, str)} {
+/// Returns {Refuse(int, str)} if a gmake function is encountered in the value.
+fn expand_var(v: Vars, name: str, visiting: str) -> str ! {
+    Unterminated(int),
+    Cycle(int, str),
+    Refuse(int, str),
+} {
     // Check if this name is already being visited (cycle detection)
     let needle = "\n{name}\n"
     let found = visiting.find(needle) else -1
@@ -230,6 +390,7 @@ fn expand_var(v: Vars, name: str, visiting: str) -> str ! {Unterminated(int), Cy
     let expanded = expand_inner(v, raw, new_visiting, var_line) else |e| match e {
         Unterminated(l) => return Unterminated(l),
         Cycle(l, n) => return Cycle(l, n),
+        Refuse(l, msg) => return Refuse(l, msg),
     }
     return expanded
 }
@@ -239,6 +400,7 @@ fn expand_var(v: Vars, name: str, visiting: str) -> str ! {Unterminated(int), Cy
 fn try_substitution(v: Vars, inside: str, visiting: str, line: int) -> str ! {
     Unterminated(int),
     Cycle(int, str),
+    Refuse(int, str),
 } {
     // Check for : form: $(VAR:.c=.o)
     let colon_pos = inside.find(":") else 0
@@ -255,6 +417,7 @@ fn try_substitution(v: Vars, inside: str, visiting: str, line: int) -> str ! {
                 let val = expand_var(v, var_name, visiting) else |e| match e {
                     Unterminated(l) => return Unterminated(l),
                     Cycle(l, n) => return Cycle(l, n),
+                    Refuse(l, msg) => return Refuse(l, msg),
                 }
                 return apply_pattern_sub(val, pattern, replacement)
             }
@@ -267,6 +430,7 @@ fn try_substitution(v: Vars, inside: str, visiting: str, line: int) -> str ! {
                 let val = expand_var(v, var_name, visiting) else |e| match e {
                     Unterminated(l) => return Unterminated(l),
                     Cycle(l, n) => return Cycle(l, n),
+                    Refuse(l, msg) => return Refuse(l, msg),
                 }
                 return apply_simple_sub(val, from, to)
             }

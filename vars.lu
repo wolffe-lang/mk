@@ -71,6 +71,7 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
                 let expanded = expand(v, value, line) else |e| match e {
                     Unterminated(l) => value,
                     Cycle(l, n) => value,
+                    Refuse(l, msg) => value,
                 }
                 existing + " " + expanded
             } else {
@@ -87,11 +88,16 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
             map.set(mut v.
                 table, name, Var { value: value, flavour: "=", line: line, exported: false })
         }
+    } else if flavour == "=immediate" {
+        // Value is already expanded (from set_var_checked); store as-is with flavour :=
+        map.set(mut v.
+            table, name, Var { value: value, flavour: ":=", line: line, exported: false })
     } else if flavour == ":=" {
         // := expands immediately
         let expanded = expand(v, value, line) else |e| match e {
             Unterminated(l) => value,
             Cycle(l, n) => value,
+            Refuse(l, msg) => value,
         }
         map.set(mut v.
             table, name, Var { value: expanded, flavour: flavour, line: line, exported: false })
@@ -109,6 +115,20 @@ fn set_var(mut v: Vars, name: str, value: str, flavour: str, line: int) {
 /// Set a variable with a given flavour, skipping if already set.
 fn set_var_skip(mut v: Vars, name: str, value: str, flavour: str, line: int) {
     set_var_impl(mut v, name, value, flavour, line, true)
+}
+
+/// Set a Makefile assignment; a refused construct in an immediate value is the caller's to report.
+fn set_var_checked(mut v: Vars, name: str, value: str, flavour: str, line: int) -> () ! {Refuse(int, str)} {
+    if flavour == ":=" {
+        let expanded = expand(v, value, line) else |e| match e {
+            Unterminated(l) => value,
+            Cycle(l, n) => value,
+            Refuse(l, msg) => return Refuse(l, msg),
+        }
+        set_var(mut v, name, expanded, "=immediate", line)
+        return
+    }
+    set_var(mut v, name, value, flavour, line)
 }
 
 /// Remove a variable (undefine).
@@ -234,6 +254,7 @@ fn export_environment(v: Vars) -> () ! {invalid} {
             let expanded = expand(v, val.value, val.line) else |e| match e {
                 Unterminated(l) => val.value,
                 Cycle(l, n) => val.value,
+                Refuse(l, msg) => val.value,
             }
             env_set(name, expanded)?
         } else {

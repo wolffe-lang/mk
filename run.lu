@@ -158,6 +158,15 @@ fn build_target(
                     prereq_failed: false,
                 }
             },
+            Refuse(l, msg) => {
+                eprint("mk: {makefile}:{l}: {msg}")
+                return BuildResult {
+                    name: name,
+                    success: false,
+                    exit_code: 2,
+                    prereq_failed: false,
+                }
+            },
         }
         let final_line = expand_auto(expanded, name, first_prereq, all_prereqs, newer_prereqs_str)
         // Split the expanded value by newlines, but only on bare newlines
@@ -314,6 +323,15 @@ fn build_recursive(
                         eprint(
                             "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                         )
+                        return BuildResult {
+                            name: name,
+                            success: false,
+                            exit_code: 2,
+                            prereq_failed: false,
+                        }
+                    },
+                    Refuse(l, msg) => {
+                        eprint("mk: {makefile}:{l}: {msg}")
                         return BuildResult {
                             name: name,
                             success: false,
@@ -842,6 +860,10 @@ fn build_goals_parallel(
                             )
                             return 2
                         },
+                        Refuse(l, msg) => {
+                            eprint("mk: {makefile}:{l}: {msg}")
+                            return 2
+                        },
                     }
                     let final_line = expand_auto(
                         expanded,
@@ -911,6 +933,10 @@ fn build_goals_parallel(
                         eprint(
                             "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                         )
+                        return 2
+                    },
+                    Refuse(l, msg) => {
+                        eprint("mk: {makefile}:{l}: {msg}")
                         return 2
                     },
                 }

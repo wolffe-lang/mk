@@ -1,0 +1,11 @@
+MAKE=mk
+CURDIR=/Users/mfwolffe/LocalLLM/Projects/mk/mlx-wollf-v7sf3/v3
+CURDIR=/Users/mfwolffe/LocalLLM/Projects/mk/mlx-wollf-v7sf3/v3
+MAKEFILE_LIST=tests/corpus/special/Makefile
+MAKEFILE_LIST=tests/corpus/special/Makefile
+MAKEFLAGS=
+MAKEFLAGS=
+MAKELEVEL=0
+MAKELEVEL=0
+DEFAULT_GOAL=all
+DEFAULT_GOAL=all

@@ -449,6 +449,10 @@ fn run(mut f: Flags) -> int {
             )
             return 2
         },
+        Refuse(l, msg) => {
+            eprint("mk: {primary_file}:{l}: {msg}")
+            return 2
+        },
     }
     // Set .DEFAULT_GOAL: the first target in the file (read: the default goal; set: changes it)
     if g.order.len > 0 {

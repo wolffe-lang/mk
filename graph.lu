@@ -217,6 +217,7 @@ fn newer_prereqs(g: Graph, name: str, built: Map[str, int]) -> List[str] {
 fn build_graph(db: Database, v: Vars, makefile: str) -> Graph ! {
     Unterminated(int),
     Cycle(int, str),
+    Refuse(int, str),
 } {
     var g = new_graph()
     // Build a set of phony names
@@ -241,6 +242,10 @@ fn build_graph(db: Database, v: Vars, makefile: str) -> Graph ! {
                     )
                     return Cycle(l, n)
                 },
+                Refuse(l, msg) => {
+                    eprint("mk: {makefile}:{l}: {msg}")
+                    return Unterminated(l)
+                },
             }
             let is_phony = map.has(phony_set, expanded_target)
             // Expand prerequisite names and split on whitespace
@@ -256,6 +261,10 @@ fn build_graph(db: Database, v: Vars, makefile: str) -> Graph ! {
                             "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                         )
                         return Cycle(l, n)
+                    },
+                    Refuse(l, msg) => {
+                        eprint("mk: {makefile}:{l}: {msg}")
+                        return Unterminated(l)
                     },
                 }
                 // Split on whitespace to handle variables that expand to multiple words
