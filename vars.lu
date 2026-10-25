@@ -95,6 +95,11 @@ fn set_var_skip(mut v: Vars, name: str, value: str, flavour: str, line: int) {
     set_var_impl(mut v, name, value, flavour, line, true)
 }
 
+/// Remove a variable (undefine).
+fn undefine_var(mut v: Vars, name: str) {
+    map.remove(mut v.table, name)
+}
+
 /// Get a variable's value, or empty string if not found.
 /// Also checks the environment for variables not in the table.
 fn var_value(v: Vars, name: str) -> str {

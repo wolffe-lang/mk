@@ -796,10 +796,16 @@ fn parse_makefile(
             line_num += 1
             continue
         }
-        // Check for define NAME
-        if stripped.starts_with("define ") {
+        // Check for define NAME (also override define)
+        if stripped.starts_with("define ") || stripped.starts_with("override define ") {
+            // Strip the override prefix if present
+            let def_line = if stripped.starts_with("override define ") {
+                stripped[9..]
+            } else {
+                stripped
+            }
             // Parse the define directive
-            let define = parse_define(stripped, line_number) else |e| match e {
+            let define = parse_define(def_line, line_number) else |e| match e {
                 none => {
                     // Not a define, fall through to normal parsing
                     line_num += 1
@@ -808,6 +814,21 @@ fn parse_makefile(
             }
             // Push onto the define stack
             (mut define_stack).push(define)
+            line_num += 1
+            continue
+        }
+        // Check for undefine NAME (also override undefine)
+        if stripped.starts_with("undefine ") || stripped.starts_with("override undefine ") {
+            // Strip the override prefix if present
+            let undef_line = if stripped.starts_with("override undefine ") {
+                stripped[13..]
+            } else {
+                stripped[9..]
+            }
+            // Extract the name (just the first word)
+            let name = undef_line.words()[0]
+            // Remove the variable
+            undefine_var(mut v, name)
             line_num += 1
             continue
         }
