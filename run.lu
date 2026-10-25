@@ -128,9 +128,11 @@ fn build_target(
         return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
     }
     let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
-    let all_prereqs = str.join(" ", node.prereqs)
+    let deduped = dedup(node.prereqs)
+    let all_prereqs = str.join(" ", deduped)
     let newer = newer_prereqs(g, name, built)
-    let newer_prereqs_str = str.join(" ", newer)
+    let newer_deduped = dedup(newer)
+    let newer_prereqs_str = str.join(" ", newer_deduped)
     var i = 0
     while i < node.recipe.len {
         let recipe_line = node.recipe[i]
@@ -289,9 +291,11 @@ fn build_recursive(
     if dry_run {
         if is_ooo {
             let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
-            let all_prereqs = str.join(" ", node.prereqs)
+            let deduped = dedup(node.prereqs)
+            let all_prereqs = str.join(" ", deduped)
             let newer = newer_prereqs(g, name, built)
-            let newer_prereqs_str = str.join(" ", newer)
+            let newer_deduped = dedup(newer)
+            let newer_prereqs_str = str.join(" ", newer_deduped)
             var ri = 0
             while ri < node.recipe.len {
                 let recipe_line = node.recipe[ri]
@@ -816,9 +820,11 @@ fn build_goals_parallel(
             // Dry run: print the recipes and do not run anything
             if dry_run {
                 let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
-                let all_prereqs = str.join(" ", node.prereqs)
+                let deduped = dedup(node.prereqs)
+                let all_prereqs = str.join(" ", deduped)
                 let newer = newer_prereqs(g, name, built)
-                let newer_prereqs_str = str.join(" ", newer)
+                let newer_deduped = dedup(newer)
+                let newer_prereqs_str = str.join(" ", newer_deduped)
                 var ri = 0
                 while ri < node.recipe.len {
                     let recipe_line = node.recipe[ri]
@@ -879,9 +885,11 @@ fn build_goals_parallel(
             }
             // Build the target — launch as a background process
             let first_prereq = if node.prereqs.len > 0 { node.prereqs[0] } else { "" }
-            let all_prereqs = str.join(" ", node.prereqs)
+            let deduped = dedup(node.prereqs)
+            let all_prereqs = str.join(" ", deduped)
             let newer = newer_prereqs(g, name, built)
-            let newer_prereqs_str = str.join(" ", newer)
+            let newer_deduped = dedup(newer)
+            let newer_prereqs_str = str.join(" ", newer_deduped)
             // Build a script: set -e first; for each line, a printf of the line (unless @ or -s),
             // then the line alone inside ( : ... ) so a comment, a cd or a continuation stays
             // inside its own subshell; a - line gets || echo "mk: [Makefile:LINE: NAME] Error $? (ignored)" >&2.

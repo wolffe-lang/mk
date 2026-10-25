@@ -1,0 +1,7 @@
+R baseline empty -f empty.mk
+R baseline missing-dir -C does-not-exist
+R baseline dup-recipe -f dup-recipe.mk
+R baseline space-var -f space-var.mk
+R baseline hash-escape -f hash-escape.mk
+R baseline goal-var -f goal-var.mk
+R baseline two-f -f two-f-1.mk -f two-f-2.mk

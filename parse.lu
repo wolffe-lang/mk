@@ -201,12 +201,19 @@ fn join_continuations(lines: List[str]) -> List[Line] {
 }
 
 /// Strip a `#` comment from a line (not inside a recipe).
+/// A `\#` is an escaped `#` and is not a comment start.
 fn strip_comment(line: str) -> str {
     let idx = line.find("#") else {
         return line
     }
     if idx == 0 {
         return ""
+    }
+    // Check if the `#` is preceded by `\`
+    if idx > 0 && line[idx - 1..idx] == "\\" {
+        // The `#` is escaped; not a comment start.
+        // Return the line with the `\` removed (the `#` is kept).
+        return line[0..idx - 1] + "#" + line[idx + 1..]
     }
     return line[0..idx]
 }
@@ -278,6 +285,12 @@ fn parse_assignment(line: str, line_num: int) -> Assignment ! {none} {
     // The name is everything before the operator, trimmed
     let name = line[0..op_pos].trim()
     if name.len == 0 {
+        return none
+    }
+    // A variable name with a space is not a valid assignment (gmake rejects with
+    // "missing separator"). define NAME WITH SPACES is legal, but ordinary assignments
+    // are not.
+    if name.contains(" ") || name.contains("\t") {
         return none
     }
 
@@ -656,8 +669,8 @@ fn parse_makefile(
             continue
         }
 
-        // For non-recipe lines, strip comments and trim
-        let stripped = strip_comment(line).trim()
+        // For non-recipe lines, trim (comments already stripped by join_continuations)
+        let stripped = line.trim()
 
         // Skip empty lines
         if stripped.len == 0 {
@@ -1175,6 +1188,59 @@ fn parse_makefile_file(
         utf8 => return parse,
     }
     parse_makefile(text, path, mut v, cli_names, include_dirs, env_wins)
+}
+
+/// Parse multiple Makefile files, merging their contents.
+/// Each file is parsed in order, and its assignments, rules, and phonies
+/// are appended to the database.
+fn parse_makefile_files(
+    paths: List[str],
+    mut v: Vars,
+    cli_names: Map[str, int],
+    include_dirs: List[str],
+    env_wins: bool,
+) -> Database ! {parse, Parse(ParseErr), io} {
+    var db = Database {
+        assignments: List[Assignment](),
+        rules: List[Rule](),
+        phonies: List[Phony](),
+        includes: List[Include](),
+        defines: List[Define](),
+        refusals: List[Refusal](),
+    }
+    for path in paths {
+        let text = fs.read_text(path) else |e| match e {
+            io => return io,
+            denied => return io,
+            not_found => return io,
+            utf8 => return parse,
+        }
+        let file_db = parse_makefile(text, path, mut v, cli_names, include_dirs, env_wins) else |e| match e {
+            parse => return parse,
+            Parse(p) => return Parse(p),
+            io => return io,
+        }
+        // Merge the file's contents into the database
+        for a in file_db.assignments {
+            (mut db.assignments).push(a)
+        }
+        for r in file_db.rules {
+            (mut db.rules).push(r)
+        }
+        for p in file_db.phonies {
+            (mut db.phonies).push(p)
+        }
+        for i in file_db.includes {
+            (mut db.includes).push(i)
+        }
+        for d in file_db.defines {
+            (mut db.defines).push(d)
+        }
+        for r in file_db.refusals {
+            (mut db.refusals).push(r)
+        }
+    }
+    return db
 }
 
 /// Print the database in a stable format for -p.

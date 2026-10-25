@@ -67,9 +67,13 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 } else
                 // Check if it's a function call (contains whitespace)
                 if is_whitespace(expanded_inside) {
-                    // Function call — route to call_function
-                    let func_result = call_function(v, expanded_inside, visiting)
-                    result = result + func_result
+                    // Could be a function call or a variable name with spaces.
+                    // Since we don't have functions yet, treat it as a variable name.
+                    let val = expand_var(v, expanded_inside, visiting) else |e| match e {
+                        Unterminated(l) => return Unterminated(l),
+                        Cycle(l, n) => return Cycle(l, n),
+                    }
+                    result = result + val
                 } else {
                     // Simple variable reference
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
@@ -108,8 +112,13 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 } else
                 // Check if it's a function call (contains whitespace)
                 if is_whitespace(expanded_inside) {
-                    let func_result = call_function(v, expanded_inside, visiting)
-                    result = result + func_result
+                    // Could be a function call or a variable name with spaces.
+                    // Since we don't have functions yet, treat it as a variable name.
+                    let val = expand_var(v, expanded_inside, visiting) else |e| match e {
+                        Unterminated(l) => return Unterminated(l),
+                        Cycle(l, n) => return Cycle(l, n),
+                    }
+                    result = result + val
                 } else {
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
                         Unterminated(l) => return Unterminated(l),

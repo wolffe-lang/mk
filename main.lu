@@ -26,7 +26,7 @@ let WOLF_VERSION: str = "0.2.34"
 
 /// Parsed CLI flags for mk.
 struct Flags {
-    file: str,
+    files: List[str],
     dir: str,
     dry_run: bool,
     silent: bool,
@@ -132,7 +132,11 @@ fn extract_jobs(arg: str) -> int {
 
 /// Print the parsed flags in a debug format.
 fn print_flags(f: Flags) {
-    print("file: {f.file}")
+    if f.files.len > 0 {
+        print("files: {str.join(" ", f.files)}")
+    } else {
+        print("files: (none, will use Makefile)")
+    }
     print("dir: {f.dir}")
     print("dry_run: {f.dry_run}")
     print("silent: {f.silent}")
@@ -158,7 +162,7 @@ fn print_usage_stderr() {
 /// Parse the CLI arguments into a Flags struct.
 fn parse_flags(args: List[str]) -> Flags ! {help, version, Parse(ParseError)} {
     var f = Flags {
-        file: "Makefile",
+        files: List[str](),
         dir: "",
         dry_run: false,
         silent: false,
@@ -213,7 +217,7 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, Parse(ParseError)} {
             if i + 1 >= args.len {
                 return Parse(ParseError { kind: "missing_arg", arg: "-f" })
             }
-            f.file = args[i + 1]
+            (mut f.files).push(args[i + 1])
             i += 2
             continue
         }
@@ -321,8 +325,19 @@ fn run(mut f: Flags) -> int {
     // CURDIR: the working directory after -C (the physical path, symlinks resolved)
     let curdir = env.cwd() else |_| ""
     set_var(mut v, "CURDIR", curdir, "=", 0)
-    // MAKEFILE_LIST: the main file (updated by includes)
-    set_var(mut v, "MAKEFILE_LIST", f.file, "=", 0)
+    // Determine the files to read: if -f was given, use those; otherwise use "Makefile"
+    var files = List[str]()
+    if f.files.len > 0 {
+        for file in f.files {
+            (mut files).push(file)
+        }
+    } else {
+        (mut files).push("Makefile")
+    }
+    // MAKEFILE_LIST: the list of files read (space-separated)
+    set_var(mut v, "MAKEFILE_LIST", str.join(" ", files), "=", 0)
+    // Use the first file as the primary makefile name for error messages
+    let primary_file = files[0]
     // MAKEFLAGS: the single-letter flags given, in gmake's spelling
     // -k → k, -n → n, -s → s, -j N → " -jN" (leading space separates from letter flags)
     // The jobserver word (--jobserver-auth=…) is track 05's — we strip it and document the difference
@@ -347,8 +362,8 @@ fn run(mut f: Flags) -> int {
     // MAKELEVEL: 0 (we don't recurse)
     set_var(mut v, "MAKELEVEL", "0", "=", 0)
     if f.print_db {
-        let db = parse_makefile_file(
-            f.file,
+        let db = parse_makefile_files(
+            files,
             mut v,
             cli_names,
             f.include_dirs,
@@ -363,11 +378,11 @@ fn run(mut f: Flags) -> int {
             },
             io => {
                 // Check if the file exists
-                if !fs.exists(f.file) {
-                    eprint("mk: {f.file}: No such file or directory")
-                    eprint("mk: *** No rule to make target '{f.file}'.  Stop.")
+                if !fs.exists(primary_file) {
+                    eprint("mk: {primary_file}: No such file or directory")
+                    eprint("mk: *** No rule to make target '{primary_file}'.  Stop.")
                 } else {
-                    eprint("mk: cannot read {f.file}")
+                    eprint("mk: cannot read {primary_file}")
                 }
                 return 2
             },
@@ -375,17 +390,17 @@ fn run(mut f: Flags) -> int {
         if db.refusals.len > 0 {
             // Print only the first refusal on stderr with the correct format
             let r = db.refusals[0]
-            eprint("mk: {f.file}:{r.line}: {r.kind}")
+            eprint("mk: {primary_file}:{r.line}: {r.kind}")
             return 2
         }
-        print_database(db, v, f.file) else |e| {
+        print_database(db, v, primary_file) else |e| {
             return 2
         }
         return 0
     }
-    // Parse the Makefile
-    let db = parse_makefile_file(
-        f.file,
+    // Parse the Makefile(s)
+    let db = parse_makefile_files(
+        files,
         mut v,
         cli_names,
         f.include_dirs,
@@ -400,11 +415,11 @@ fn run(mut f: Flags) -> int {
         },
         io => {
             // Check if the file exists
-            if !fs.exists(f.file) {
-                eprint("mk: {f.file}: No such file or directory")
-                eprint("mk: *** No rule to make target '{f.file}'.  Stop.")
+            if !fs.exists(primary_file) {
+                eprint("mk: {primary_file}: No such file or directory")
+                eprint("mk: *** No rule to make target '{primary_file}'.  Stop.")
             } else {
-                eprint("mk: cannot read {f.file}")
+                eprint("mk: cannot read {primary_file}")
             }
             return 2
         },
@@ -412,7 +427,7 @@ fn run(mut f: Flags) -> int {
     if db.refusals.len > 0 {
         // Print only the first refusal on stderr with the correct format
         let r = db.refusals[0]
-        eprint("mk: {f.file}:{r.line}: {r.kind}")
+        eprint("mk: {primary_file}:{r.line}: {r.kind}")
         return 2
     }
     // Export the environment for recipes
@@ -423,14 +438,14 @@ fn run(mut f: Flags) -> int {
         },
     }
     // Build the graph
-    let g = build_graph(db, v, f.file) else |e| match e {
+    let g = build_graph(db, v, primary_file) else |e| match e {
         Unterminated(l) => {
-            eprint("{f.file}:{l}: *** unterminated variable reference.  Stop.")
+            eprint("{primary_file}:{l}: *** unterminated variable reference.  Stop.")
             return 2
         },
         Cycle(l, n) => {
             eprint(
-                "{f.file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
+                "{primary_file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
             )
             return 2
         },
@@ -441,6 +456,11 @@ fn run(mut f: Flags) -> int {
     } else {
         set_var(mut v, ".DEFAULT_GOAL", "", "=", 0)
     }
+    // If there are no goals and no targets, print "No targets. Stop." and exit 2.
+    if f.goals.len == 0 && g.order.len == 0 {
+        eprint("mk: *** No targets.  Stop.")
+        return 2
+    }
     // Build the goals
     let exit_code = build_goals(
         g,
@@ -450,7 +470,7 @@ fn run(mut f: Flags) -> int {
         f.dry_run,
         f.keep_going,
         f.jobs,
-        f.file,
+        primary_file,
     )
     return exit_code
 }
@@ -519,31 +539,31 @@ fn main() -> !int {
             return 2
         },
     }
-    // Change directory if -C is used. If it fails, use the current directory.
+    // Change directory if -C is used. If it fails, print the error and exit 2.
     var abs_dir = ""
     if f.dir.len > 0 {
         env.set_cwd(f.dir) else |e| match e {
             io => {
-                // -C failed; use current directory
+                // -C failed; print the error with Entering/Leaving around it
                 abs_dir = env.cwd() else |_| ""
                 print("mk: Entering directory '{abs_dir}'")
-                let status = run(mut f)
+                eprint("mk: *** {f.dir}: No such file or directory.  Stop.")
                 print("mk: Leaving directory '{abs_dir}'")
                 return 2
             },
             denied => {
-                // -C failed; use current directory
+                // -C failed; print the error with Entering/Leaving around it
                 abs_dir = env.cwd() else |_| ""
                 print("mk: Entering directory '{abs_dir}'")
-                let status = run(mut f)
+                eprint("mk: *** {f.dir}: No such file or directory.  Stop.")
                 print("mk: Leaving directory '{abs_dir}'")
                 return 2
             },
             not_found => {
-                // -C failed; use current directory
+                // -C failed; print the error with Entering/Leaving around it
                 abs_dir = env.cwd() else |_| ""
                 print("mk: Entering directory '{abs_dir}'")
-                let status = run(mut f)
+                eprint("mk: *** {f.dir}: No such file or directory.  Stop.")
                 print("mk: Leaving directory '{abs_dir}'")
                 return 2
             },

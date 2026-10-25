@@ -59,6 +59,7 @@ fn add_node(
     first_recipe_line: int,
     line: int,
     is_phony: bool,
+    makefile: str,
 ) {
     if map.has(g.nodes, name) {
         // Merge prerequisites
@@ -69,8 +70,19 @@ fn add_node(
         for p in prereqs {
             (mut merged).push(p)
         }
-        // Use the recipe from the first rule that has one
-        if existing.recipe.len == 0 && recipe.len > 0 {
+        // If both have recipes, the second wins (with warnings)
+        if existing.recipe.len > 0 && recipe.len > 0 {
+            eprint("{makefile}:{line}: warning: overriding recipe for target '{name}'")
+            eprint("{makefile}:{existing.line}: warning: ignoring old recipe for target '{name}'")
+            map.set(mut g.nodes, name, Node {
+                name: name,
+                prereqs: merged,
+                recipe: recipe,
+                first_recipe_line: first_recipe_line,
+                line: line,
+                is_phony: is_phony || existing.is_phony,
+            })
+        } else if existing.recipe.len == 0 && recipe.len > 0 {
             map.set(mut g.nodes, name, Node {
                 name: name,
                 prereqs: merged,
@@ -214,10 +226,23 @@ fn build_graph(db: Database, v: Vars, makefile: str) -> Graph ! {
             map.set(mut phony_set, n, 1)
         }
     }
-    // Add rules — expand variables in prerequisite names
+    // Add rules — expand variables in target and prerequisite names
     for r in db.rules {
         for t in r.targets {
-            let is_phony = map.has(phony_set, t)
+            // Expand target names
+            let expanded_target = expand(v, t, r.line) else |e| match e {
+                Unterminated(l) => {
+                    eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                    return Unterminated(l)
+                },
+                Cycle(l, n) => {
+                    eprint(
+                        "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
+                    )
+                    return Cycle(l, n)
+                },
+            }
+            let is_phony = map.has(phony_set, expanded_target)
             // Expand prerequisite names and split on whitespace
             var expanded_prereqs = List[str]()
             for p in r.prereqs {
@@ -238,7 +263,7 @@ fn build_graph(db: Database, v: Vars, makefile: str) -> Graph ! {
                     (mut expanded_prereqs).push(word)
                 }
             }
-            add_node(mut g, t, expanded_prereqs, r.recipe, r.first_recipe_line, r.line, is_phony)
+            add_node(mut g, expanded_target, expanded_prereqs, r.recipe, r.first_recipe_line, r.line, is_phony, makefile)
         }
     }
     return g

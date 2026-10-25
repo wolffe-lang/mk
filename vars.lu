@@ -166,6 +166,24 @@ fn set_var_exported(mut v: Vars, name: str, exported: bool) {
     })
 }
 
+/// Deduplicate a list of strings, keeping the first occurrence of each.
+fn dedup(list: List[str]) -> List[str] {
+    var result = List[str]()
+    for s in list {
+        var found = false
+        for r in result {
+            if r == s {
+                found = true
+                break
+            }
+        }
+        if !found {
+            (mut result).push(s)
+        }
+    }
+    return result
+}
+
 /// Expand automatic variables in a string.
 fn expand_auto(
     s: str,
