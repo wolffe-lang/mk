@@ -86,7 +86,11 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
                 // Append to recursive: store the text
                 existing + " " + value
             }
-            map.set(mut v.table, name, make_var(new_value, existing_flavour, line, existing_exported, existing_origin))
+            map.set(
+                mut v.table,
+                name,
+                make_var(new_value, existing_flavour, line, existing_exported, existing_origin),
+            )
         } else {
             map.set(mut v.table, name, make_var(value, "=", line, false, ""))
         }
@@ -131,7 +135,9 @@ fn set_var_skip(mut v: Vars, name: str, value: str, flavour: str, line: int) {
 }
 
 /// Set a Makefile assignment; a refused construct in an immediate value is the caller's to report.
-fn set_var_checked(mut v: Vars, name: str, value: str, flavour: str, line: int) -> () ! {Refuse(int, str)} {
+fn set_var_checked(mut v: Vars, name: str, value: str, flavour: str, line: int) -> () ! {
+    Refuse(int, str),
+} {
     if flavour == ":=" {
         let expanded = expand(v, value, line) else |e| match e {
             Unterminated(l) => value,
@@ -263,7 +269,10 @@ fn export_environment(v: Vars) -> () ! {invalid} {
         }
         // Export if: export_all is true, or the variable is marked exported,
         // or the variable came from the environment or CLI
-        let should_export = v.export_all || val.exported || val.origin == "env" || val.origin == "cli"
+        let should_export = v.export_all ||
+            val.exported ||
+            val.origin == "env" ||
+            val.origin == "cli"
         if should_export {
             // Expand the value (recursive variables expand now)
             let expanded = expand(v, val.value, val.line) else |e| match e {
@@ -271,7 +280,13 @@ fn export_environment(v: Vars) -> () ! {invalid} {
                 Cycle(l, n) => val.value,
                 Refuse(l, msg) => val.value,
             }
-            env_set(name, expanded)?
+            // MAKELEVEL is exported as MAKELEVEL + 1 (for sub-makes)
+            if name == "MAKELEVEL" {
+                let level = expanded.to_int() else 0
+                env_set(name, "{level + 1}")?
+            } else {
+                env_set(name, expanded)?
+            }
         } else {
             // Unexported Makefile variable: remove from environment
             env_unset(name)?

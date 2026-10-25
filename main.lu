@@ -24,6 +24,15 @@ let VERSION: str = "0.3.0"
 
 let WOLF_VERSION: str = "0.2.34"
 
+/// Build the program-name prefix: `mk:` at level 0, `mk[N]:` at level N > 0.
+fn mk_prefix(level: int) -> str {
+    if level > 0 {
+        "mk[{level}]:"
+    } else {
+        "mk:"
+    }
+}
+
 /// Parsed CLI flags for mk.
 struct Flags {
     files: List[str],
@@ -308,6 +317,7 @@ fn parse_and_build(
     env_wins: bool,
     env_names: Map[str, int],
     primary_file: str,
+    makelevel: int,
 ) -> (Database, Graph) ! {parse, Parse(ParseErr), io} {
     let db = parse_makefile_files(
         files,
@@ -323,7 +333,7 @@ fn parse_and_build(
     }
     if db.refusals.len > 0 {
         let r = db.refusals[0]
-        eprint("mk: {primary_file}:{r.line}: {r.kind}")
+        eprint("{mk_prefix(makelevel)} {primary_file}:{r.line}: {r.kind}")
         return parse
     }
     let g = build_graph(db, v, primary_file) else |e| match e {
@@ -345,7 +355,47 @@ fn parse_and_build(
     return (db, g)
 }
 
+/// Parse MAKEFLAGS from the environment and merge into the flags.
+/// MAKEFLAGS contains single-letter flags (k, n, s) and optionally " -jN".
+/// CLI flags take precedence over environment flags.
+fn merge_env_flags(mut f: Flags) {
+    // Only apply MAKEFLAGS if it's in the environment (i.e., we're a sub-make)
+    let makeflags = env.get("MAKEFLAGS") else ""
+    if makeflags.len == 0 {
+        return
+    }
+    // Parse the flags: single-letter flags (k, n, s) and " -jN"
+    // CLI flags take precedence, so only apply env flags if the CLI didn't set them
+    var i = 0
+    while i < makeflags.len {
+        let c = makeflags[i..i + 1]
+        if c == "k" && !f.keep_going {
+            f.keep_going = true
+        } else if c == "n" && !f.dry_run {
+            f.dry_run = true
+        } else if c == "s" && !f.silent {
+            f.silent = true
+        } else if c == " " {
+            // Look for -jN
+            let rest = makeflags[i + 1..]
+            if rest.starts_with("-j") {
+                if f.jobs <= 1 {
+                    // CLI didn't set -j; parse the env value
+                    let jrest = rest[2..]
+                    let n = jrest.to_int() else 0
+                    if n > 0 {
+                        f.jobs = n
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+}
+
 fn run(mut f: Flags) -> int {
+    // Merge MAKEFLAGS from the environment (for sub-makes)
+    merge_env_flags(mut f)
     // First, collect CLI override names
     var cli_names = Map[str, int]()
     for o in f.overrides {
@@ -417,11 +467,19 @@ fn run(mut f: Flags) -> int {
     } else {
         set_var(mut v, "MAKEFLAGS", "", "=", 0)
     }
-    // MAKELEVEL: 0 (we don't recurse)
-    set_var(mut v, "MAKELEVEL", "0", "=", 0)
+    // MAKELEVEL: read from the environment at start (default 0)
+    let makelevel_str = env.get("MAKELEVEL") else "0"
+    let makelevel = makelevel_str.to_int() else 0
+    set_var(mut v, "MAKELEVEL", "{makelevel}", "=", 0)
+    // Export MAKELEVEL as MAKELEVEL + 1 to recipes
+    set_var_exported(mut v, "MAKELEVEL", true)
+    // Export MAKEFLAGS to recipes
+    set_var_exported(mut v, "MAKEFLAGS", true)
     // Track whether we've already restarted (gmake restarts at most until nothing changes;
     // one restart suffices for our witnesses)
     var restarted = false
+    // The MAKELEVEL for this invocation (used for the [N] prefix)
+    let my_level = makelevel
     if f.print_db {
         let (db, _) = parse_and_build(
             files,
@@ -431,6 +489,7 @@ fn run(mut f: Flags) -> int {
             f.env_wins,
             env_names,
             primary_file,
+            my_level,
         ) else |e| match e {
             parse => {
                 return 2
@@ -441,8 +500,10 @@ fn run(mut f: Flags) -> int {
             },
             io => {
                 if !fs.exists(primary_file) {
-                    eprint("mk: {primary_file}: No such file or directory")
-                    eprint("mk: *** No rule to make target '{primary_file}'.  Stop.")
+                    eprint("{mk_prefix(my_level)} {primary_file}: No such file or directory")
+                    eprint(
+                        "{mk_prefix(my_level)} *** No rule to make target '{primary_file}'.  Stop.",
+                    )
                 } else {
                     eprint("mk: cannot read {primary_file}")
                 }
@@ -463,6 +524,7 @@ fn run(mut f: Flags) -> int {
         f.env_wins,
         env_names,
         primary_file,
+        my_level,
     ) else |e| match e {
         parse => {
             return 2
@@ -518,6 +580,7 @@ fn run(mut f: Flags) -> int {
                     "\n",
                     "",
                     primary_file,
+                    my_level,
                 )
                 if !result.success {
                     return result.exit_code
@@ -533,6 +596,7 @@ fn run(mut f: Flags) -> int {
             f.env_wins,
             env_names,
             primary_file,
+            my_level,
         ) else |e| match e {
             parse => {
                 return 2
@@ -543,8 +607,10 @@ fn run(mut f: Flags) -> int {
             },
             io => {
                 if !fs.exists(primary_file) {
-                    eprint("mk: {primary_file}: No such file or directory")
-                    eprint("mk: *** No rule to make target '{primary_file}'.  Stop.")
+                    eprint("{mk_prefix(my_level)} {primary_file}: No such file or directory")
+                    eprint(
+                        "{mk_prefix(my_level)} *** No rule to make target '{primary_file}'.  Stop.",
+                    )
                 } else {
                     eprint("mk: cannot read {primary_file}")
                 }
@@ -604,6 +670,7 @@ fn run(mut f: Flags) -> int {
         f.keep_going,
         f.jobs,
         primary_file,
+        my_level,
     )
     return exit_code
 }
@@ -674,41 +741,43 @@ fn main() -> !int {
     }
     // Change directory if -C is used. If it fails, print the error and exit 2.
     var abs_dir = ""
+    // Read MAKELEVEL from the environment (for the [N] prefix)
+    let level = (env.get("MAKELEVEL") else "0").to_int() else 0
     if f.dir.len > 0 {
         env.set_cwd(f.dir) else |e| match e {
             io => {
                 // -C failed; print the error with Entering/Leaving around it
                 abs_dir = env.cwd() else |_| ""
-                print("mk: Entering directory '{abs_dir}'")
-                eprint("mk: *** {f.dir}: No such file or directory.  Stop.")
-                print("mk: Leaving directory '{abs_dir}'")
+                print("{mk_prefix(level)} Entering directory '{abs_dir}'")
+                eprint("{mk_prefix(level)} *** {f.dir}: No such file or directory.  Stop.")
+                print("{mk_prefix(level)} Leaving directory '{abs_dir}'")
                 return 2
             },
             denied => {
                 // -C failed; print the error with Entering/Leaving around it
                 abs_dir = env.cwd() else |_| ""
-                print("mk: Entering directory '{abs_dir}'")
-                eprint("mk: *** {f.dir}: No such file or directory.  Stop.")
-                print("mk: Leaving directory '{abs_dir}'")
+                print("{mk_prefix(level)} Entering directory '{abs_dir}'")
+                eprint("{mk_prefix(level)} *** {f.dir}: No such file or directory.  Stop.")
+                print("{mk_prefix(level)} Leaving directory '{abs_dir}'")
                 return 2
             },
             not_found => {
                 // -C failed; print the error with Entering/Leaving around it
                 abs_dir = env.cwd() else |_| ""
-                print("mk: Entering directory '{abs_dir}'")
-                eprint("mk: *** {f.dir}: No such file or directory.  Stop.")
-                print("mk: Leaving directory '{abs_dir}'")
+                print("{mk_prefix(level)} Entering directory '{abs_dir}'")
+                eprint("{mk_prefix(level)} *** {f.dir}: No such file or directory.  Stop.")
+                print("{mk_prefix(level)} Leaving directory '{abs_dir}'")
                 return 2
             },
         }
         // Get the physical absolute path (symlinks resolved), same as gmake prints
         abs_dir = env.cwd() else |_| f.dir
-        print("mk: Entering directory '{abs_dir}'")
+        print("{mk_prefix(level)} Entering directory '{abs_dir}'")
     }
     let status = run(mut f)
     // Print "Leaving directory" if -C was used
     if f.dir.len > 0 {
-        print("mk: Leaving directory '{abs_dir}'")
+        print("{mk_prefix(level)} Leaving directory '{abs_dir}'")
     }
     return status
 }
