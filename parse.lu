@@ -1215,7 +1215,14 @@ fn parse_makefile_files(
             not_found => return io,
             utf8 => return parse,
         }
-        let file_db = parse_makefile(text, path, mut v, cli_names, include_dirs, env_wins) else |e| match e {
+        let file_db = parse_makefile(
+            text,
+            path,
+            mut v,
+            cli_names,
+            include_dirs,
+            env_wins,
+        ) else |e| match e {
             parse => return parse,
             Parse(p) => return Parse(p),
             io => return io,

@@ -263,7 +263,16 @@ fn build_graph(db: Database, v: Vars, makefile: str) -> Graph ! {
                     (mut expanded_prereqs).push(word)
                 }
             }
-            add_node(mut g, expanded_target, expanded_prereqs, r.recipe, r.first_recipe_line, r.line, is_phony, makefile)
+            add_node(
+                mut g,
+                expanded_target,
+                expanded_prereqs,
+                r.recipe,
+                r.first_recipe_line,
+                r.line,
+                is_phony,
+                makefile,
+            )
         }
     }
     return g

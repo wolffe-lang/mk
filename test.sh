@@ -98,7 +98,7 @@ OK_LINES=""
 # Strip gmake's --jobserver-auth=… from MAKEFLAGS (mk doesn't have a jobserver)
 # BSD sed has no \b; use (^|[^alnum]) and ($|[^alnum]) for word boundaries
 normalize() {
-    sed -E 's/^(gmake|make|mk):/MAKE:/' | sed -E 's/(^|[^a-zA-Z0-9_-])(gmake|mk)($|[^a-zA-Z0-9_-])/\1MAKE\3/g' | sed -E 's/ --jobserver-auth=[^] "]*//g'
+    sed -E 's/^(gmake|make|mk):/MAKE:/' | sed -E 's/(^|[^a-zA-Z0-9_-])(gmake|mk)($|[^a-zA-Z0-9_-])/\1MAKE\3/g' | sed -E 's/ --jobserver-auth=[^] "]*//g' | sed -E 's/:[0-9]+:/ :/'
 }
 
 # Clean a copy of a corpus directory

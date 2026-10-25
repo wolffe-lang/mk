@@ -352,7 +352,9 @@ fn build_recursive(
                             unsupported => 127,
                         }
                         if exit_code != 0 {
-                            eprint("mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}")
+                            eprint(
+                                "mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}",
+                            )
                             return BuildResult {
                                 name: name,
                                 success: false,
@@ -871,7 +873,9 @@ fn build_goals_parallel(
                                 unsupported => 127,
                             }
                             if exit_code != 0 {
-                                eprint("mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}")
+                                eprint(
+                                    "mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}",
+                                )
                                 return 2
                             }
                         }
