@@ -84,6 +84,31 @@ fn recipe_for_shell(line: str) -> str {
     return result
 }
 
+/// Strip recipe prefixes (@, -, +) in any order.
+/// Returns (stripped_line, is_silent, ignore_errors, always_run).
+/// @ means silent (don't print), - means ignore errors, + means always run (even under -n).
+fn strip_prefixes(line: str) -> (str, bool, bool, bool) {
+    var is_silent = false
+    var ignore_errors = false
+    var always_run = false
+    var l = line
+    while true {
+        if l.starts_with("@") {
+            is_silent = true
+            l = l[1..]
+        } else if l.starts_with("-") {
+            ignore_errors = true
+            l = l[1..]
+        } else if l.starts_with("+") {
+            always_run = true
+            l = l[1..]
+        } else {
+            break
+        }
+    }
+    (l, is_silent, ignore_errors, always_run)
+}
+
 /// Build a single target's recipe. Returns the result.
 fn build_target(
     g: Graph,
@@ -139,16 +164,8 @@ fn build_target(
         var j = 0
         while j < lines.len {
             var line = lines[j]
-            var ignore_errors = false
-            var is_silent = false
-            if line.starts_with("@") {
-                is_silent = true
-                line = line[1..]
-            }
-            if line.starts_with("-") {
-                ignore_errors = true
-                line = line[1..]
-            }
+            let (stripped, is_silent, ignore_errors, _always) = strip_prefixes(line)
+            line = stripped
             if !is_silent && !silent {
                 print(line)
             }
@@ -309,10 +326,38 @@ fn build_recursive(
                     newer_prereqs_str,
                 )
                 var line = final_line
-                if line.starts_with("@") { line = line[1..] }
-                if line.starts_with("-") { line = line[1..] }
-                let shell_line = recipe_for_shell(line)
-                print(shell_line)
+                let (stripped, is_silent, _ignore, always_run) = strip_prefixes(line)
+                // Under -n, print the command line with prefixes stripped.
+                // gmake prints every line under -n, regardless of @.
+                if !silent {
+                    print(stripped)
+                }
+                if always_run {
+                    // + prefix: run even under -n
+                    let shell_line = recipe_for_shell(stripped)
+                    if shell_line.len > 0 {
+                        let cmd = process.command("/bin/sh")
+                        process.push_arg(mut cmd, "-c")
+                        process.push_arg(mut cmd, shell_line)
+                        let exit_code = process.run(cmd) else |e| match e {
+                            denied => 126,
+                            invalid => 127,
+                            io => 126,
+                            not_found => 127,
+                            signal => 128,
+                            unsupported => 127,
+                        }
+                        if exit_code != 0 {
+                            eprint("mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}")
+                            return BuildResult {
+                                name: name,
+                                success: false,
+                                exit_code: exit_code,
+                                prereq_failed: false,
+                            }
+                        }
+                    }
+                }
                 ri += 1
             }
             map.set(mut built, name, 1)
@@ -798,10 +843,33 @@ fn build_goals_parallel(
                         newer_prereqs_str,
                     )
                     var line = final_line
-                    if line.starts_with("@") { line = line[1..] }
-                    if line.starts_with("-") { line = line[1..] }
-                    let shell_line = recipe_for_shell(line)
-                    print(shell_line)
+                    let (stripped, is_silent, _ignore, always_run) = strip_prefixes(line)
+                    // Under -n, print the command line with prefixes stripped.
+                    // gmake prints every line under -n, regardless of @.
+                    if !silent {
+                        print(stripped)
+                    }
+                    if always_run {
+                        // + prefix: run even under -n
+                        let shell_line = recipe_for_shell(stripped)
+                        if shell_line.len > 0 {
+                            let cmd = process.command("/bin/sh")
+                            process.push_arg(mut cmd, "-c")
+                            process.push_arg(mut cmd, shell_line)
+                            let exit_code = process.run(cmd) else |e| match e {
+                                denied => 126,
+                                invalid => 127,
+                                io => 126,
+                                not_found => 127,
+                                signal => 128,
+                                unsupported => 127,
+                            }
+                            if exit_code != 0 {
+                                eprint("mk: *** [{makefile}:{recipe_line_num}: {name}] Error {exit_code}")
+                                return 2
+                            }
+                        }
+                    }
                     ri += 1
                 }
                 map.set(mut started, name, 1)
@@ -842,16 +910,8 @@ fn build_goals_parallel(
                     newer_prereqs_str,
                 )
                 var line = final_line
-                var is_silent = false
-                var ignore_errors = false
-                if line.starts_with("@") {
-                    is_silent = true
-                    line = line[1..]
-                }
-                if line.starts_with("-") {
-                    ignore_errors = true
-                    line = line[1..]
-                }
+                let (stripped, is_silent, ignore_errors, _always) = strip_prefixes(line)
+                line = stripped
                 // The script prints each line right before running it (as make does, so the
                 // echo and the command's output interleave), runs it in its own subshell so a
                 // `#` comment, a `cd` or a continuation stays inside its line, and stops at the
