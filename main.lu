@@ -454,11 +454,33 @@ fn run(mut f: Flags) -> int {
             return 2
         },
     }
-    // Set .DEFAULT_GOAL: the first target in the file (read: the default goal; set: changes it)
-    if g.order.len > 0 {
-        set_var(mut v, ".DEFAULT_GOAL", g.order[0], "=", 0)
+    // Set .DEFAULT_GOAL: the first target in the file, if not already set by the Makefile.
+    // If the Makefile set .DEFAULT_GOAL, use that value as the default goal.
+    // If the value names more than one word, refuse it.
+    if f.goals.len == 0 {
+        // No goals on the command line; use .DEFAULT_GOAL if set, else the first target
+        let default_goal = var_value(v, ".DEFAULT_GOAL")
+        if default_goal.len > 0 {
+            // .DEFAULT_GOAL was set by the Makefile
+            let words = default_goal.words()
+            if words.len > 1 {
+                eprint("mk: *** .DEFAULT_GOAL contains more than one target.  Stop.")
+                return 2
+            }
+            (mut f.goals).push(default_goal)
+        } else if g.order.len > 0 {
+            // .DEFAULT_GOAL was not set; use the first target
+            (mut f.goals).push(g.order[0])
+            // Set .DEFAULT_GOAL to the first target (for -p output)
+            set_var(mut v, ".DEFAULT_GOAL", g.order[0], "=", 0)
+        }
     } else {
-        set_var(mut v, ".DEFAULT_GOAL", "", "=", 0)
+        // Goals were given on the command line; set .DEFAULT_GOAL to the first target
+        // (for -p output) only if it wasn't already set by the Makefile
+        let default_goal = var_value(v, ".DEFAULT_GOAL")
+        if default_goal.len == 0 && g.order.len > 0 {
+            set_var(mut v, ".DEFAULT_GOAL", g.order[0], "=", 0)
+        }
     }
     // If there are no goals and no targets, print "No targets. Stop." and exit 2.
     if f.goals.len == 0 && g.order.len == 0 {

@@ -1,0 +1,3 @@
+R defaultgoal set -f set.mk
+R defaultgoal empty-then-target -f empty-then-target.mk
+R defaultgoal two-words -f two-words.mk

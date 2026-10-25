@@ -519,6 +519,8 @@ fn build_goals(
     makefile: str,
 ) -> int {
     if goals.len == 0 {
+        // No goals on the command line and .DEFAULT_GOAL was not set.
+        // Use the first target in the file.
         if g.order.len > 0 {
             (mut goals).push(g.order[0])
         } else {
