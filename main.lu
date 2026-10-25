@@ -299,6 +299,52 @@ fn parse_flags(args: List[str]) -> Flags ! {help, version, Parse(ParseError)} {
     return f
 }
 
+/// Parse the Makefile(s) and build the graph. Returns the database and graph.
+fn parse_and_build(
+    files: List[str],
+    mut v: Vars,
+    cli_names: Map[str, int],
+    include_dirs: List[str],
+    env_wins: bool,
+    env_names: Map[str, int],
+    primary_file: str,
+) -> (Database, Graph) ! {parse, Parse(ParseErr), io} {
+    let db = parse_makefile_files(
+        files,
+        mut v,
+        cli_names,
+        include_dirs,
+        env_wins,
+        env_names,
+    ) else |e| match e {
+        parse => return parse,
+        Parse(p) => return Parse(p),
+        io => return io,
+    }
+    if db.refusals.len > 0 {
+        let r = db.refusals[0]
+        eprint("mk: {primary_file}:{r.line}: {r.kind}")
+        return parse
+    }
+    let g = build_graph(db, v, primary_file) else |e| match e {
+        Unterminated(l) => {
+            eprint("{primary_file}:{l}: *** unterminated variable reference.  Stop.")
+            return parse
+        },
+        Cycle(l, n) => {
+            eprint(
+                "{primary_file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
+            )
+            return parse
+        },
+        Refuse(l, msg) => {
+            eprint("mk: {primary_file}:{l}: {msg}")
+            return parse
+        },
+    }
+    return (db, g)
+}
+
 fn run(mut f: Flags) -> int {
     // First, collect CLI override names
     var cli_names = Map[str, int]()
@@ -373,14 +419,18 @@ fn run(mut f: Flags) -> int {
     }
     // MAKELEVEL: 0 (we don't recurse)
     set_var(mut v, "MAKELEVEL", "0", "=", 0)
+    // Track whether we've already restarted (gmake restarts at most until nothing changes;
+    // one restart suffices for our witnesses)
+    var restarted = false
     if f.print_db {
-        let db = parse_makefile_files(
+        let (db, _) = parse_and_build(
             files,
             mut v,
             cli_names,
             f.include_dirs,
             f.env_wins,
             env_names,
+            primary_file,
         ) else |e| match e {
             parse => {
                 return 2
@@ -390,7 +440,6 @@ fn run(mut f: Flags) -> int {
                 return 2
             },
             io => {
-                // Check if the file exists
                 if !fs.exists(primary_file) {
                     eprint("mk: {primary_file}: No such file or directory")
                     eprint("mk: *** No rule to make target '{primary_file}'.  Stop.")
@@ -400,25 +449,20 @@ fn run(mut f: Flags) -> int {
                 return 2
             },
         }
-        if db.refusals.len > 0 {
-            // Print only the first refusal on stderr with the correct format
-            let r = db.refusals[0]
-            eprint("mk: {primary_file}:{r.line}: {r.kind}")
-            return 2
-        }
         print_database(db, v, primary_file) else |e| {
             return 2
         }
         return 0
     }
-    // Parse the Makefile(s)
-    let db = parse_makefile_files(
+    // Parse and build the graph, potentially restarting if included files need remaking
+    var (db, g) = parse_and_build(
         files,
         mut v,
         cli_names,
         f.include_dirs,
         f.env_wins,
         env_names,
+        primary_file,
     ) else |e| match e {
         parse => {
             return 2
@@ -428,7 +472,6 @@ fn run(mut f: Flags) -> int {
             return 2
         },
         io => {
-            // Check if the file exists
             if !fs.exists(primary_file) {
                 eprint("mk: {primary_file}: No such file or directory")
                 eprint("mk: *** No rule to make target '{primary_file}'.  Stop.")
@@ -438,33 +481,83 @@ fn run(mut f: Flags) -> int {
             return 2
         },
     }
-    if db.refusals.len > 0 {
-        // Print only the first refusal on stderr with the correct format
-        let r = db.refusals[0]
-        eprint("mk: {primary_file}:{r.line}: {r.kind}")
-        return 2
+    // Check if any included file needs remaking
+    var needs_restart = false
+    for inc in db.included_files {
+        // Only consider files that have a rule in the graph
+        if !map.has(g.nodes, inc.path) {
+            continue
+        }
+        // Check if the file is out of date
+        var built = Map[str, int]()
+        if is_out_of_date(g, inc.path, built) {
+            needs_restart = true
+            break
+        }
+    }
+    // If an included file needs remaking, build it and restart (once)
+    if needs_restart && !restarted {
+        restarted = true
+        // Build the included files that need remaking
+        var built = Map[str, int]()
+        for inc in db.included_files {
+            if !map.has(g.nodes, inc.path) {
+                continue
+            }
+            if is_out_of_date(g, inc.path, built) {
+                // Build this included file
+                let result = build_recursive(
+                    g,
+                    v,
+                    inc.path,
+                    f.silent,
+                    f.dry_run,
+                    true,
+                    f.keep_going,
+                    mut built,
+                    "\n",
+                    "",
+                    primary_file,
+                )
+                if !result.success {
+                    return result.exit_code
+                }
+            }
+        }
+        // Re-parse and re-build
+        let (new_db, new_g) = parse_and_build(
+            files,
+            mut v,
+            cli_names,
+            f.include_dirs,
+            f.env_wins,
+            env_names,
+            primary_file,
+        ) else |e| match e {
+            parse => {
+                return 2
+            },
+            Parse(p) => {
+                eprint("{p.file}:{p.line}: *** {p.message}.  Stop.")
+                return 2
+            },
+            io => {
+                if !fs.exists(primary_file) {
+                    eprint("mk: {primary_file}: No such file or directory")
+                    eprint("mk: *** No rule to make target '{primary_file}'.  Stop.")
+                } else {
+                    eprint("mk: cannot read {primary_file}")
+                }
+                return 2
+            },
+        }
+        db = new_db
+        g = new_g
     }
     // Export the environment for recipes
     export_environment(v) else |e| match e {
         invalid => {
             eprint("mk: *** invalid variable name.  Stop.")
-            return 2
-        },
-    }
-    // Build the graph
-    let g = build_graph(db, v, primary_file) else |e| match e {
-        Unterminated(l) => {
-            eprint("{primary_file}:{l}: *** unterminated variable reference.  Stop.")
-            return 2
-        },
-        Cycle(l, n) => {
-            eprint(
-                "{primary_file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
-            )
-            return 2
-        },
-        Refuse(l, msg) => {
-            eprint("mk: {primary_file}:{l}: {msg}")
             return 2
         },
     }

@@ -1,0 +1,3 @@
+missing -f missing.mk
+soft-missing -f soft-missing.mk
+stale -f stale.mk

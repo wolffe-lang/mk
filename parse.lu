@@ -75,6 +75,14 @@ struct Line {
     line: int,
 }
 
+/// An included file with its path and whether it was found.
+struct IncludedFile {
+    path: str,
+    found: bool,
+    optional: bool,
+    line: int,
+}
+
 /// The parsed Makefile database.
 struct Database {
     assignments: List[Assignment],
@@ -83,6 +91,8 @@ struct Database {
     includes: List[Include],
     defines: List[Define],
     refusals: List[Refusal],
+    // Files that were included (for remaking)
+    included_files: List[IncludedFile],
 }
 
 /// Join non-recipe lines with continuations and strip comments.
@@ -722,6 +732,7 @@ fn parse_makefile(
         includes: List[Include](),
         defines: List[Define](),
         refusals: List[Refusal](),
+        included_files: List[IncludedFile](),
     }
 
     // Split into lines
@@ -1236,7 +1247,13 @@ fn parse_makefile(
                     // Glob the expanded name
                     let globs = glob(expanded)
                     if globs.len == 0 {
-                        // No matches
+                        // No matches - record for potential remaking
+                        (mut db.included_files).push(IncludedFile {
+                            path: expanded,
+                            found: false,
+                            optional: include.optional,
+                            line: include.line,
+                        })
                         if !include.optional {
                             // Hard include: error
                             eprint("{file}:{include.line}: {expanded}: No such file or directory")
@@ -1283,6 +1300,13 @@ fn parse_makefile(
                                 continue
                             },
                         }
+                        // Record the included file for potential remaking
+                        (mut db.included_files).push(IncludedFile {
+                            path: g,
+                            found: true,
+                            optional: include.optional,
+                            line: include.line,
+                        })
                         // Merge the sub-database into the main database
                         for a in sub_db.assignments {
                             (mut db.assignments).push(a)
@@ -1421,6 +1445,7 @@ fn parse_makefile_files(
         includes: List[Include](),
         defines: List[Define](),
         refusals: List[Refusal](),
+        included_files: List[IncludedFile](),
     }
     for path in paths {
         let text = fs.read_text(path) else |e| match e {
@@ -1460,6 +1485,9 @@ fn parse_makefile_files(
         }
         for r in file_db.refusals {
             (mut db.refusals).push(r)
+        }
+        for f in file_db.included_files {
+            (mut db.included_files).push(f)
         }
     }
     return db
