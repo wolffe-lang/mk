@@ -705,6 +705,7 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
 /// Parse a Makefile from text. Returns the database.
 /// `file` is the filename for error messages.
 /// `include_dirs` is the list of -I directories to search for included files.
+/// `env_names` is a map of environment variable names (value is ignored).
 fn parse_makefile(
     text: str,
     file: str,
@@ -712,6 +713,7 @@ fn parse_makefile(
     cli_names: Map[str, int],
     include_dirs: List[str],
     env_wins: bool,
+    env_names: Map[str, int],
 ) -> Database ! {parse, Parse(ParseErr), io} {
     var db = Database {
         assignments: List[Assignment](),
@@ -1102,9 +1104,9 @@ fn parse_makefile(
             // Parse as an assignment
             let assignment = parse_assignment(rest, line_number) else |e| match e {
                 none => {
-                    // Not an assignment, fall through to normal parsing
-                    line_num += 1
-                    continue
+                    // Not an assignment: override NAME with no operator is an error
+                    eprint("{file}:{line_number}: *** missing separator.  Stop.")
+                    return parse
                 },
             }
             // Apply the assignment, skipping CLI overrides
@@ -1252,6 +1254,7 @@ fn parse_makefile(
                             cli_names,
                             include_dirs,
                             env_wins,
+                            env_names,
                         ) else |e| match e {
                             parse => {
                                 if !include.optional {
@@ -1332,20 +1335,26 @@ fn parse_makefile(
         if !map.has(cli_names, assignment.name) {
             // If env_wins is true, check if the variable is in the environment
             if env_wins {
-                let env_val = env.get(assignment.name) else ""
-                if env_val.len > 0 {
+                if map.has(env_names, assignment.name) {
                     // Environment wins: use the environment value
-                    set_var(mut v, assignment.name, env_val, ":=", assignment.line)
+                    let env_val = env.get(assignment.name) else ""
+                    set_var_origin(mut v, assignment.name, env_val, ":=", assignment.line, "env")
                     line_num += 1
                     continue
                 }
             }
-            set_var_checked(mut v, assignment.name, assignment.value, assignment.op, assignment.line) else |e| match e {
-                Refuse(l, msg) => {
-                    (mut db.refusals).push(Refusal { kind: msg, line: l })
-                    line_num += 1
-                    continue
-                },
+            // Check if the variable is in the environment (for origin tracking)
+            if map.has(env_names, assignment.name) {
+                // The variable is in the environment; use the Makefile value but mark as env origin
+                set_var_origin(mut v, assignment.name, assignment.value, assignment.op, assignment.line, "env")
+            } else {
+                set_var_checked(mut v, assignment.name, assignment.value, assignment.op, assignment.line) else |e| match e {
+                    Refuse(l, msg) => {
+                        (mut db.refusals).push(Refusal { kind: msg, line: l })
+                        line_num += 1
+                        continue
+                    },
+                }
             }
         }
         line_num += 1
@@ -1383,6 +1392,7 @@ fn parse_makefile_file(
     cli_names: Map[str, int],
     include_dirs: List[str],
     env_wins: bool,
+    env_names: Map[str, int],
 ) -> Database ! {parse, Parse(ParseErr), io} {
     let text = fs.read_text(path) else |e| match e {
         io => return io,
@@ -1390,7 +1400,7 @@ fn parse_makefile_file(
         not_found => return io,
         utf8 => return parse,
     }
-    parse_makefile(text, path, mut v, cli_names, include_dirs, env_wins)
+    parse_makefile(text, path, mut v, cli_names, include_dirs, env_wins, env_names)
 }
 
 /// Parse multiple Makefile files, merging their contents.
@@ -1402,6 +1412,7 @@ fn parse_makefile_files(
     cli_names: Map[str, int],
     include_dirs: List[str],
     env_wins: bool,
+    env_names: Map[str, int],
 ) -> Database ! {parse, Parse(ParseErr), io} {
     var db = Database {
         assignments: List[Assignment](),
@@ -1425,6 +1436,7 @@ fn parse_makefile_files(
             cli_names,
             include_dirs,
             env_wins,
+            env_names,
         ) else |e| match e {
             parse => return parse,
             Parse(p) => return Parse(p),

@@ -309,7 +309,7 @@ fn run(mut f: Flags) -> int {
         let name = o[0..eq]
         map.set(mut cli_names, name, 1)
     }
-    // Seed the variable table with command-line overrides
+    // Seed the variable table with command-line overrides (origin: "cli", exported)
     var v = new_vars()
     for o in f.overrides {
         let eq = o.find("=") else {
@@ -317,7 +317,19 @@ fn run(mut f: Flags) -> int {
         }
         let name = o[0..eq]
         let value = o[eq + 1..]
-        set_var(mut v, name, value, ":=", 0)
+        set_var_origin(mut v, name, value, ":=", 0, "cli")
+        // CLI variables are always exported
+        set_var_exported(mut v, name, true)
+    }
+    // Build a map of environment variable names (for origin tracking)
+    var env_names = Map[str, int]()
+    for ev in env_vars() {
+        // ev is "NAME=VALUE"; extract the name
+        let eq = ev.find("=") else {
+            continue
+        }
+        let name = ev[0..eq]
+        map.set(mut env_names, name, 1)
     }
     // Set special variables: MAKE, CURDIR, MAKEFILE_LIST, MAKEFLAGS, MAKELEVEL, .DEFAULT_GOAL
     // MAKE: the program as invoked. wolf has env_arg0() only from 0.2.36; until then the literal "mk"
@@ -368,6 +380,7 @@ fn run(mut f: Flags) -> int {
             cli_names,
             f.include_dirs,
             f.env_wins,
+            env_names,
         ) else |e| match e {
             parse => {
                 return 2
@@ -405,6 +418,7 @@ fn run(mut f: Flags) -> int {
         cli_names,
         f.include_dirs,
         f.env_wins,
+        env_names,
     ) else |e| match e {
         parse => {
             return 2

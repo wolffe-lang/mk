@@ -78,10 +78,19 @@ R1 functions
 P1 vars"
 for rows in "$CORPUS_DIR"/*/rows; do
     d=$(basename "$(dirname "$rows")")
+    local_env=""
     while IFS= read -r line; do
-        case "$line" in ''|'#'*) continue ;; esac
+        case "$line" in
+            '') continue ;;
+            '# env:'*)
+                # Extract the environment variables from the comment
+                local_env="${line#\# env: }"
+                continue
+                ;;
+            '#'*) continue ;;
+        esac
         MATRIX="$MATRIX
-R $d $line"
+R $d $local_env $line"
     done < "$rows"
 done
 MATRIX="$MATRIX

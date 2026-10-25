@@ -26,6 +26,9 @@ struct Var {
     flavour: str,
     line: int,
     exported: bool,
+    // Origin: "env" if the variable came from the environment, "cli" if from the command line,
+    // or "" if defined in the Makefile.
+    origin: str,
 }
 
 /// The variable table.
@@ -46,6 +49,11 @@ fn new_vars() -> Vars {
     }
 }
 
+/// Create a variable with a given origin.
+fn make_var(value: str, flavour: str, line: int, exported: bool, origin: str) -> Var {
+    Var { value: value, flavour: flavour, line: line, exported: exported, origin: origin }
+}
+
 /// Set a variable with a given flavour.
 /// If `skip_if_set` is true and the name is already in the table, the assignment is a no-op.
 /// This is used for command-line overrides: a Makefile assignment to a command-line name
@@ -57,14 +65,14 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
     }
     if flavour == "?=" {
         if !map.has(v.table, name) {
-            map.set(mut v.
-                table, name, Var { value: value, flavour: flavour, line: line, exported: false })
+            map.set(mut v.table, name, make_var(value, flavour, line, false, ""))
         }
     } else if flavour == "+=" {
         if map.has(v.table, name) {
             let existing = var_value(v, name)
             let existing_flavour = var_flavour(v, name)
             let existing_exported = var_exported(v, name)
+            let existing_origin = var_origin(v, name)
             // += keeps the flavour: append to := expands the value, append to = stores text
             let new_value = if existing_flavour == ":=" {
                 // Append to immediate: expand the new value and append
@@ -78,20 +86,13 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
                 // Append to recursive: store the text
                 existing + " " + value
             }
-            map.set(mut v.table, name, Var {
-                value: new_value,
-                flavour: existing_flavour,
-                line: line,
-                exported: existing_exported,
-            })
+            map.set(mut v.table, name, make_var(new_value, existing_flavour, line, existing_exported, existing_origin))
         } else {
-            map.set(mut v.
-                table, name, Var { value: value, flavour: "=", line: line, exported: false })
+            map.set(mut v.table, name, make_var(value, "=", line, false, ""))
         }
     } else if flavour == "=immediate" {
         // Value is already expanded (from set_var_checked); store as-is with flavour :=
-        map.set(mut v.
-            table, name, Var { value: value, flavour: ":=", line: line, exported: false })
+        map.set(mut v.table, name, make_var(value, ":=", line, false, ""))
     } else if flavour == ":=" {
         // := expands immediately
         let expanded = expand(v, value, line) else |e| match e {
@@ -99,17 +100,29 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
             Cycle(l, n) => value,
             Refuse(l, msg) => value,
         }
-        map.set(mut v.
-            table, name, Var { value: expanded, flavour: flavour, line: line, exported: false })
+        map.set(mut v.table, name, make_var(expanded, ":=", line, false, ""))
     } else {
-        map.set(mut v.
-            table, name, Var { value: value, flavour: flavour, line: line, exported: false })
+        map.set(mut v.table, name, make_var(value, flavour, line, false, ""))
     }
 }
 
 /// Set a variable with a given flavour (skip_if_set = false).
 fn set_var(mut v: Vars, name: str, value: str, flavour: str, line: int) {
     set_var_impl(mut v, name, value, flavour, line, false)
+}
+
+/// Set a variable with a given flavour and origin (skip_if_set = false).
+fn set_var_origin(mut v: Vars, name: str, value: str, flavour: str, line: int, origin: str) {
+    if flavour == ":=" {
+        let expanded = expand(v, value, line) else |e| match e {
+            Unterminated(l) => value,
+            Cycle(l, n) => value,
+            Refuse(l, msg) => value,
+        }
+        map.set(mut v.table, name, make_var(expanded, ":=", line, false, origin))
+    } else {
+        map.set(mut v.table, name, make_var(value, flavour, line, false, origin))
+    }
 }
 
 /// Set a variable with a given flavour, skipping if already set.
@@ -171,19 +184,22 @@ fn var_exported(v: Vars, name: str) -> bool {
     return val.exported
 }
 
+/// Get the origin of a variable, or empty string if not found.
+fn var_origin(v: Vars, name: str) -> str {
+    let val = map.get(v.table, name) else {
+        return ""
+    }
+    return val.origin
+}
+
 /// Set the exported flag of a variable.
 fn set_var_exported(mut v: Vars, name: str, exported: bool) {
     let val = map.get(v.table, name) else {
         // Variable doesn't exist; create it with the exported flag
-        map.set(mut v.table, name, Var { value: "", flavour: "=", line: 0, exported: exported })
+        map.set(mut v.table, name, make_var("", "=", 0, exported, ""))
         return
     }
-    map.set(mut v.table, name, Var {
-        value: val.value,
-        flavour: val.flavour,
-        line: val.line,
-        exported: exported,
-    })
+    map.set(mut v.table, name, make_var(val.value, val.flavour, val.line, exported, val.origin))
 }
 
 /// Deduplicate a list of strings, keeping the first occurrence of each.
@@ -227,7 +243,7 @@ fn export_environment(v: Vars) -> () ! {invalid} {
     // For each variable in the table, in definition order:
     // - if it is unexported by name (`unexport NAME`) → `env_unset(name)`
     // - else if `export` alone was seen, or the variable is marked exported,
-    //   or its origin is the environment → `env_set(name, value)`
+    //   or its origin is the environment or CLI → `env_set(name, value)`
     for name in map.keys(v.table) {
         // Check if the name is in the unexported list
         var is_unexported = false
@@ -246,9 +262,8 @@ fn export_environment(v: Vars) -> () ! {invalid} {
             continue
         }
         // Export if: export_all is true, or the variable is marked exported,
-        // or the variable came from the environment
-        let in_env = env.get(name) else ""
-        let should_export = v.export_all || val.exported || in_env.len > 0
+        // or the variable came from the environment or CLI
+        let should_export = v.export_all || val.exported || val.origin == "env" || val.origin == "cli"
         if should_export {
             // Expand the value (recursive variables expand now)
             let expanded = expand(v, val.value, val.line) else |e| match e {
