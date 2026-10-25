@@ -109,7 +109,7 @@ OK_LINES=""
 # Strip gmake's --jobserver-auth=… from MAKEFLAGS (mk doesn't have a jobserver)
 # BSD sed has no \b; use (^|[^alnum]) and ($|[^alnum]) for word boundaries
 normalize() {
-    sed -E 's/^(gmake|make|mk):/MAKE:/' | sed -E 's/(^|[^a-zA-Z0-9_-])(gmake|mk)($|[^a-zA-Z0-9_-])/\1MAKE\3/g' | sed -E 's/ --jobserver-auth=[^] "]*//g' | sed -E 's/:[0-9]+:/ :/'
+    sed -E 's/^(gmake|make|mk)(\[[0-9]+\])?:/MAKE\2:/' | sed -E 's/(^|[^a-zA-Z0-9_-])(gmake|mk)($|[^a-zA-Z0-9_-])/\1MAKE\3/g' | sed -E 's/ --jobserver-auth=[^] "]*//g' | sed -E 's/:[0-9]+:/ :/'
 }
 
 # Clean a copy of a corpus directory
@@ -476,13 +476,30 @@ test_p1() {
 same_as_make() {
     local row="$1" dir="$2"
     shift 2
-    # Consume a leading --env NAME=value … -- into an array
+    # Consume --env NAME=value … -- wherever it sits in the arguments
     local -a envs=()
-    if [ "${1:-}" = "--env" ]; then
+    local -a args=()
+    local in_env=0
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "--env" ]; then
+            in_env=1
+            shift
+            continue
+        fi
+        if [ "$1" = "--" ] && [ $in_env -eq 1 ]; then
+            in_env=0
+            shift
+            continue
+        fi
+        if [ $in_env -eq 1 ]; then
+            # Expand the value so $PATH means the harness's PATH
+            envs+=("$(eval "printf '%s' \"$1\"")")
+            shift
+            continue
+        fi
+        args+=("$1")
         shift
-        while [ "$1" != "--" ]; do envs+=("$1"); shift; done
-        shift
-    fi
+    done
     local a b
     a=$(mktemp -d)
     b=$(mktemp -d)
@@ -491,12 +508,12 @@ same_as_make() {
     clean_copy "$a" "$dir"
     clean_copy "$b" "$dir"
     case "$row" in U1|U2|again*) ;; *) false ;; esac && {
-        (cd "$a" && env ${envs[@]+"${envs[@]}"} "$MAKE" "$@" >/dev/null 2>&1 </dev/null) || true
-        (cd "$b" && env ${envs[@]+"${envs[@]}"} "$ROOT/mk" "$@" >/dev/null 2>&1 </dev/null) || true
+        (cd "$a" && env ${envs[@]+"${envs[@]}"} "$MAKE" ${args[@]+"${args[@]}"} >/dev/null 2>&1 </dev/null) || true
+        (cd "$b" && env ${envs[@]+"${envs[@]}"} "$ROOT/mk" ${args[@]+"${args[@]}"} >/dev/null 2>&1 </dev/null) || true
     }
     local make_out mk_out make_st=0 mk_st=0
-    make_out=$(cd "$a" && env ${envs[@]+"${envs[@]}"} "$MAKE" "$@" 2>&1 </dev/null) || make_st=$?
-    mk_out=$(cd "$b" && env ${envs[@]+"${envs[@]}"} "$ROOT/mk" "$@" 2>&1 </dev/null) || mk_st=$?
+    make_out=$(cd "$a" && env ${envs[@]+"${envs[@]}"} "$MAKE" ${args[@]+"${args[@]}"} 2>&1 </dev/null) || make_st=$?
+    mk_out=$(cd "$b" && env ${envs[@]+"${envs[@]}"} "$ROOT/mk" ${args[@]+"${args[@]}"} 2>&1 </dev/null) || mk_st=$?
     # Replace each tool's own copy path with DIR so paths from different temp dirs compare equal
     # gmake prints the physical path (pwd -P), mk prints env.cwd() (also physical)
     local a_real b_real
