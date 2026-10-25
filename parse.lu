@@ -468,8 +468,8 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         }
         // Expand the name
         let expanded = expand(v, name, line_num) else |e| match e {
-            unterminated(l) => return parse,
-            cycle(l, n) => return parse,
+            Unterminated(l) => return parse,
+            Cycle(l, n) => return parse,
         }
         // Check if the variable has a non-empty value
         let val = var_value(v, expanded)
@@ -510,12 +510,12 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         let right = inner[comma + 1..].trim()
         // Expand both sides
         let left_expanded = expand(v, left, line_num) else |e| match e {
-            unterminated(l) => return parse,
-            cycle(l, n) => return parse,
+            Unterminated(l) => return parse,
+            Cycle(l, n) => return parse,
         }
         let right_expanded = expand(v, right, line_num) else |e| match e {
-            unterminated(l) => return parse,
-            cycle(l, n) => return parse,
+            Unterminated(l) => return parse,
+            Cycle(l, n) => return parse,
         }
         // Compare after stripping whitespace
         let left_trimmed = left_expanded.trim()
@@ -558,12 +558,12 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         let right = rest2[1..close2]
         // Expand both sides
         let left_expanded = expand(v, left, line_num) else |e| match e {
-            unterminated(l) => return parse,
-            cycle(l, n) => return parse,
+            Unterminated(l) => return parse,
+            Cycle(l, n) => return parse,
         }
         let right_expanded = expand(v, right, line_num) else |e| match e {
-            unterminated(l) => return parse,
-            cycle(l, n) => return parse,
+            Unterminated(l) => return parse,
+            Cycle(l, n) => return parse,
         }
         // Compare after stripping whitespace
         let left_trimmed = left_expanded.trim()
@@ -770,11 +770,11 @@ fn parse_makefile(
             if top.op == ":=" {
                 // Immediate expansion
                 let expanded = expand(v, top.value, top.line) else |e| match e {
-                    unterminated(l) => {
+                    Unterminated(l) => {
                         eprint("{file}:{l}: *** unterminated variable reference.  Stop.")
                         return parse
                     },
-                    cycle(l, n) => {
+                    Cycle(l, n) => {
                         eprint(
                             "{file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                         )
@@ -1024,11 +1024,11 @@ fn parse_makefile(
                 for name in include.names {
                     // Expand the name
                     let expanded = expand(v, name, include.line) else |e| match e {
-                        unterminated(l) => {
+                        Unterminated(l) => {
                             eprint("{file}:{l}: *** unterminated variable reference.  Stop.")
                             return parse
                         },
-                        cycle(l, n) => {
+                        Cycle(l, n) => {
                             eprint(
                                 "{file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                             )
@@ -1231,11 +1231,11 @@ fn print_database(db: Database, v: Vars, makefile: str) -> !int {
             val
         } else {
             expand(v, val, line) else |e| match e {
-                unterminated(l) => {
+                Unterminated(l) => {
                     eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
                     return 2
                 },
-                cycle(l, n) => {
+                Cycle(l, n) => {
                     eprint(
                         "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                     )

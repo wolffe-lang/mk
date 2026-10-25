@@ -424,11 +424,11 @@ fn run(mut f: Flags) -> int {
     }
     // Build the graph
     let g = build_graph(db, v, f.file) else |e| match e {
-        unterminated(l) => {
+        Unterminated(l) => {
             eprint("{f.file}:{l}: *** unterminated variable reference.  Stop.")
             return 2
         },
-        cycle(l, n) => {
+        Cycle(l, n) => {
             eprint(
                 "{f.file}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
             )

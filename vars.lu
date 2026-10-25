@@ -69,8 +69,8 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
             let new_value = if existing_flavour == ":=" {
                 // Append to immediate: expand the new value and append
                 let expanded = expand(v, value, line) else |e| match e {
-                    unterminated(l) => value,
-                    cycle(l, n) => value,
+                    Unterminated(l) => value,
+                    Cycle(l, n) => value,
                 }
                 existing + " " + expanded
             } else {
@@ -90,8 +90,8 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
     } else if flavour == ":=" {
         // := expands immediately
         let expanded = expand(v, value, line) else |e| match e {
-            unterminated(l) => value,
-            cycle(l, n) => value,
+            Unterminated(l) => value,
+            Cycle(l, n) => value,
         }
         map.set(mut v.
             table, name, Var { value: expanded, flavour: flavour, line: line, exported: false })
@@ -113,7 +113,7 @@ fn set_var_skip(mut v: Vars, name: str, value: str, flavour: str, line: int) {
 
 /// Remove a variable (undefine).
 fn undefine_var(mut v: Vars, name: str) {
-    map.remove(mut v.table, name)
+    let _ = map.remove(mut v.table, name)
 }
 
 /// Get a variable's value, or empty string if not found.
@@ -200,7 +200,7 @@ fn export_environment(v: Vars) -> () ! {invalid} {
             }
         }
         if is_unexported {
-            env_unset(name)
+            env_unset(name)?
             continue
         }
         // Check if the variable should be exported
@@ -214,13 +214,13 @@ fn export_environment(v: Vars) -> () ! {invalid} {
         if should_export {
             // Expand the value (recursive variables expand now)
             let expanded = expand(v, val.value, val.line) else |e| match e {
-                unterminated(l) => val.value,
-                cycle(l, n) => val.value,
+                Unterminated(l) => val.value,
+                Cycle(l, n) => val.value,
             }
-            env_set(name, expanded)
+            env_set(name, expanded)?
         } else {
             // Unexported Makefile variable: remove from environment
-            env_unset(name)
+            env_unset(name)?
         }
     }
 }

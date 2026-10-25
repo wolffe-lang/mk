@@ -111,7 +111,7 @@ fn build_target(
         let recipe_line = node.recipe[i]
         let recipe_line_num = node.first_recipe_line + i
         let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
-            unterminated(l) => {
+            Unterminated(l) => {
                 eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
                 return BuildResult {
                     name: name,
@@ -120,7 +120,7 @@ fn build_target(
                     prereq_failed: false,
                 }
             },
-            cycle(l, n) => {
+            Cycle(l, n) => {
                 eprint(
                     "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                 )
@@ -280,7 +280,7 @@ fn build_recursive(
                 let recipe_line = node.recipe[ri]
                 let recipe_line_num = node.first_recipe_line + ri
                 let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
-                    unterminated(l) => {
+                    Unterminated(l) => {
                         eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
                         return BuildResult {
                             name: name,
@@ -289,7 +289,7 @@ fn build_recursive(
                             prereq_failed: false,
                         }
                     },
-                    cycle(l, n) => {
+                    Cycle(l, n) => {
                         eprint(
                             "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                         )
@@ -779,11 +779,11 @@ fn build_goals_parallel(
                     let recipe_line = node.recipe[ri]
                     let recipe_line_num = node.first_recipe_line + ri
                     let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
-                        unterminated(l) => {
+                        Unterminated(l) => {
                             eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
                             return 2
                         },
-                        cycle(l, n) => {
+                        Cycle(l, n) => {
                             eprint(
                                 "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                             )
@@ -823,11 +823,11 @@ fn build_goals_parallel(
                 let recipe_line = node.recipe[ri]
                 let recipe_line_num = node.first_recipe_line + ri
                 let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
-                    unterminated(l) => {
+                    Unterminated(l) => {
                         eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
                         return 2
                     },
-                    cycle(l, n) => {
+                    Cycle(l, n) => {
                         eprint(
                             "{makefile}:{l}: *** Recursive variable '{n}' references itself (eventually).  Stop.",
                         )
