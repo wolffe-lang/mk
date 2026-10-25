@@ -176,3 +176,206 @@ line in `rows` that both tools get). Commit red, then `override, export, unexpor
   functions; commit `Release 0.3.0: the directives`; the clone proof as in P0.3.
 
 **Verify:** the clone's result lines; `./mk --version`; `git log --oneline | head -20`. Stop for the judge.
+
+## Fix prompts from the judge (2026-10-25, `judge.md`; run in order, one per session)
+
+### P1.8 — the warnings, the recipe prefixes, the baseline corrections
+
+Three small things, three commits, no new feature.
+
+1. **Zero warnings.** `wolf build main.lu -o mk` prints 14. W0603 (10): the error tags `unterminated(int)` and
+   `cycle(int, str)` carry payloads, so wolf wants them CapCase: rename to `Unterminated(int)` and
+   `Cycle(int, str)` in every `! {…}` row and every `else`/match arm that names them (`expand.lu:17, 25, 26, 197,
+   231, 232`, `graph.lu:206, 207`, and the arms that destructure them — `grep -n 'unterminated\|cycle' *.lu`
+   finds every site; edit each in place, ≤ 60 lines per edit). W0601 (4): a fallible result dropped —
+   `vars.lu:116` `map.remove(mut v.table, name)` is an intentional no-op when the name is absent: write
+   `let _ = map.remove(mut v.table, name)`; `vars.lu:203, 220, 223` `env_unset(name)` / `env_set(name, expanded)`
+   must propagate: add `?` (the enclosing `export_environment` already declares `! {invalid}`). Rebuild: zero
+   warnings. Commit `build: zero warnings`.
+2. **Recipe prefixes in any order, and `+`.** gmake strips any run of `@`, `-`, `+` (and spaces) from the front
+   of a recipe line, in any order: `-@printf "prefix\n"` prints `prefix`; `+@printf …` too; `+printf "prefix\n"`
+   echoes `printf "prefix\n"` then runs it. `+` means "run even under `-n`, `-t`, `-q`": under `-n`, gmake
+   **executes** `+@printf executed\n > witness` (and prints the command line, as it prints every line under
+   `-n`): the file `witness` exists afterwards. Today `run.lu:144–151, 312–313, 801–802, 847–854` peel one `@`
+   then one `-`: replace each pair with one loop that peels `@`, `-`, `+` in any order and records three flags
+   (silent, ignore_error, always_run); under `-n`, run the line when always_run. Rows: `prefix/` with
+   `Makefile` recipes `-@`, `+`, `+@`, `@-+` on one target each and `rows`: `plain`, `n -n`. Commit red
+   (`rows: recipe prefixes (red)`), then `recipe prefixes in any order; + runs under -n`.
+3. **Baseline corrections**, one commit `baseline: $^ $? dedup, empty Makefile, -C missing, duplicate recipes,
+   the normaliser`:
+   - `$^` and `$?` list each prerequisite once, in order of first appearance (`out.c: a a b` → `[a b]`;
+     `vars.lu:170 expand_auto`).
+   - An empty Makefile (or one with no rule) and no goal: `mk: *** No targets.  Stop.` on stderr, exit 2
+     (`main.lu:298 run`, after parsing).
+   - `-C` into a missing directory: `mk: *** does-not-exist: No such file or directory.  Stop.`, exit 2, **before**
+     anything runs (gmake prints `Entering`/`Leaving` around it only when `-C` succeeded once already; here it
+     prints the two directory lines of the *current* directory — paste `gmake -C does-not-exist` in an empty
+     dir and copy its three lines exactly).
+   - A second rule with a recipe for the same target: the second recipe wins, with gmake's two warnings on stderr
+     in this order: `Makefile:4: warning: overriding recipe for target 'all'` then
+     `Makefile:2: warning: ignoring old recipe for target 'all'` (the line numbers are the rules' lines).
+   - A variable name containing a space in an ordinary assignment is `Makefile:1: *** missing separator.  Stop.`;
+     but `define odd name` … `endef` is legal and `$(odd name)` expands to its value (`parse_assignment`,
+     `parse_define`, `expand_var`).
+   - `X = before\#hash \` newline ` after` → `[before#hash after]` (the `\#` escape survives
+     `join_continuations` and `strip_comment`).
+   - A target whose name is a variable reference, `$(GOAL):`, is expanded when the rule is read (`parse_rule`).
+   - Two `-f` files are both read, in order (`parse_flags`: a list, not a string).
+   - `test.sh`: the normaliser's `s/ --jobserver-auth=[^ ]*//` eats the `]` or `"` after the word; make it
+     `s/ --jobserver-auth=[^] "]*//`.
+   Rows: `baseline/` (one Makefile per case where a directory can hold several; `rows` naming each), committed red
+   first. README: the *Known differences* section gains nothing here (these are fixes), the *Tests* row count is
+   re-pasted from `./test.sh | tail -1`.
+
+**Verify:** `wolf build main.lu -o mk 2>&1 | grep -c warning` → `0`; the `prefix/` and `baseline/` rows;
+`./test.sh | tail -1`. Stop.
+
+### P1.9 — refuse by name, everywhere
+
+mk's contract is: a construct it does not implement is refused **by its name**, exit 2, one line on stderr; never
+a silent wrong answer. Three breaches, one commit each.
+
+1. **Functions in any position.** `$(error HELLO)` inside a recipe exits 0 today and prints `result=[]`. Every
+   `$(name …)` whose `name` is a gmake function (`subst patsubst strip findstring filter filter-out sort word
+   wordlist words firstword lastword dir notdir suffix basename addsuffix addprefix join wildcard realpath abspath
+   if or and intcmp foreach file call value eval origin flavor shell error warning info let`) is refused as
+   `mk: Makefile:N: functions are not supported` — in a recipe, in an assignment, in a prerequisite list, in a
+   conditional. The refusal must come from `expand_inner`/`call_function` in `expand.lu` (the one place every
+   `$(…)` passes), **not** from `check_refusal`'s line scan, so the position no longer matters. `patsubst` and
+   `filter` currently say `pattern rules are not supported`: the function name is the refusal, the `%` inside
+   its arguments is not a pattern rule. Row: `functions/` with a recipe `$(error X)`, an assignment
+   `Y := $(subst a,b,abc)`, and `$(info hi)` at top level; `rows`: `recipe`, `assign`, `info` — each expects
+   exit 2 and gmake's *different* behaviour, so these rows are **refusal rows**: compare mk against the
+   expected line in a `# expect:` comment, as the pattern-rule row does.
+2. **Special targets.** A rule whose target is one of `.ONESHELL .SILENT .DELETE_ON_ERROR .PRECIOUS .INTERMEDIATE
+   .SECONDARY .NOTINTERMEDIATE .IGNORE .NOTPARALLEL .WAIT .POSIX .SECONDEXPANSION .EXTRA_PREREQS .DEFAULT
+   .LOW_RESOLUTION_TIME` (every gmake special target except `.PHONY`, `.SUFFIXES`, `.DEFAULT_GOAL`,
+   `.EXPORT_ALL_VARIABLES`, which mk knows) is refused `mk: Makefile:N: .ONESHELL is not supported` — never
+   made the default goal, never `Nothing to be done for '.ONESHELL'`.
+3. **`SHELL` and `.SHELLFLAGS`.** An assignment to `SHELL` or `.SHELLFLAGS` in a Makefile is refused
+   `mk: Makefile:N: SHELL is not supported` until track 04 implements it; today `SHELL = /usr/bin/false` is
+   ignored and the recipe runs.
+
+README: the *Refused* table gains `special targets` (the list) and `SHELL`/`.SHELLFLAGS`, and its functions row
+says "in any position". CHANGELOG `### Fixed`.
+
+**Verify:** `printf 'all:\n\t@echo $(error X)\n' > /tmp/m && ./mk -f /tmp/m; echo $?` → the refusal line and `2`;
+the three new rows; `./test.sh | tail -1`. Stop.
+
+### P1.10 — `.DEFAULT_GOAL` set
+
+```
+.DEFAULT_GOAL := second
+first:
+	@echo first
+second:
+	@echo second-[$(.DEFAULT_GOAL)]
+```
+gmake prints `second-[second]`; mk runs `first`. Rule (the manual, *Special Variables*): when no goal is given on
+the command line, the goal is the value of `.DEFAULT_GOAL` after the Makefile is read; if it was never set, it is
+the first target (`main.lu:438–442` sets it, but `build_goals` ignores it). If the value names more than one
+word: `mk: *** .DEFAULT_GOAL contains more than one target.  Stop.` (paste gmake's line). Setting it to empty
+and then defining targets makes the next target the default (gmake's documented idiom). Row: `defaultgoal/`
+(`rows`: `set`, `empty-then-target`, `two-words`). Commit red, then `.DEFAULT_GOAL: set changes the goal`.
+
+**Verify:** the three rows; `./test.sh | tail -1`. Stop.
+
+### P1.11 — conditionals, gmake's way
+
+Three witnesses, pasted from gmake 4.4.1:
+
+```
+ifeq (a,b)            ifeq ( a ,a)          ifeq "a" "a"        ifeq " a " "a"      ifeq 'a' "a"
+X = bad1              X = yes               X = yes             X = yes             X = yes
+else ifeq (c,c)       else                  else                else                else
+X = yes               X = no                X = no              X = no              X = no
+else                  endif                 endif               endif               endif
+X = bad2              → no                  → yes               → no                → yes
+endif
+→ yes
+```
+Rules (`parse_conditional`, `eval_conditional`, `parse.lu:433–586`):
+- `else ifeq …` / `else ifneq …` / `else ifdef …` / `else ifndef …` on one line is a new condition tested only when
+  every earlier branch of the same `if` was false. Today it falls to the trailing `else` (prints `bad2`).
+- The parenthesised form `(A,B)`: A is the text from after `(` to the first top-level `,` with **leading**
+  whitespace removed, trailing kept (` a ` → `a `); B is the text after the `,` to the matching `)` with
+  leading whitespace removed. Both are expanded, then compared byte for byte. Do **not** strip both sides
+  (the P1.4 prompt said so and was wrong: the witness is `( a ,a)` → `no`).
+- The quoted forms `"A" "B"`, `'A' 'B'` and mixed: each argument is the text between its quotes, exactly
+  (` a ` stays ` a `), expanded, compared. Any whitespace between the two quoted arguments.
+- `ifeq` with neither form: `Makefile:N: *** invalid syntax in conditional.  Stop.` (already right).
+Rows: `cond2/` with the five witnesses as five targets or five small Makefiles under one directory (`rows`
+naming each). Commit red, then `conditionals: else-if chains, gmake's whitespace, the quoted forms`.
+README's *Accepted* table: the conditional row gains the quoted forms and `else ifeq`.
+
+**Verify:** the rows; `./test.sh | tail -1`. Stop.
+
+### P1.12 — export origin and state
+
+Four witnesses (gmake 4.4.1; the recipe is `@printf "make=[$(X)] shell=[%s]\n" "$$X"` unless shown):
+1. `export X = original` / `unexport X` / `export X` → the recipe sees `[original]` (mk: `[]`): `unexport` clears
+   the exported flag and `export NAME` sets it again; neither touches the value (`vars.lu:155 set_var_exported`,
+   `export_environment`).
+2. `mk X=cli` with `all: @printf "make=[$(X)] shell=[%s]\n" "$$X"` → `make=[cli] shell=[cli]`: **every
+   command-line variable is exported** (the manual, *Communicating Variables to a Sub-make*). mk gives
+   `shell=[]`.
+3. `X= mk` (the environment holds `X` with an empty value) and `X = fromfile` in the Makefile → `shell=[fromfile]`:
+   a variable present in the environment, even empty, has environment origin and is exported when the Makefile
+   reassigns it. mk tests the value, not the presence — use the environment's *names* (`env_names()` or iterate
+   `env_all()`; if wolf-std has no way to list the environment, file the gap and say so in the README).
+4. `override X` with no operator on its line → `Makefile:1: *** missing separator.  Stop.`, exit 2 (mk accepts it).
+Rows: `export2/` (`rows`: `reexport`, `cli X=cli`, `emptyenv` with `# env: X=` — extend the harness's `# env:`
+line to allow an empty value — and `override-bare`). Commit red, then `export: origin by presence, unexport then
+export, command-line variables exported; bare override refused`.
+
+**Verify:** the four rows; `./test.sh | tail -1`. Stop.
+
+### P1.13 — remaking included makefiles
+
+gmake, after reading every makefile, treats each included file as a goal: if a rule can remake it and it is out of
+date (or missing), gmake makes it, then **restarts** reading from scratch with the new contents (the manual, *How
+Makefiles Are Remade*). Three witnesses, each with `all: @printf "X=[$(X)]\n"` and the rule
+`generated.mk: @printf "X = regenerated\n" > $@`:
+- `include generated.mk`, file absent → gmake makes it and prints `X=[regenerated]` (mk: `No rule to make
+  target 'generated.mk'`, exit 2 — because today the missing include is fatal before the rules are read);
+- `-include generated.mk`, file absent → `X=[regenerated]` (mk: `X=[]`);
+- `include generated.mk` with `generated.mk: source` and `source` newer → the stale `X = stale` file is rewritten
+  (16 bytes `X = regenerated\n`) and the output is `X=[regenerated]`.
+Implementation (`parse_include` records every included path and whether it was found; `main.lu:298 run`):
+after `build_graph`, for each included path that has a rule in the graph, decide with `is_out_of_date`; make the
+out-of-date ones with the ordinary machinery (their recipes echo as recipes do, unless `-s`/`@`); if any was
+remade (or was missing and now exists), re-run the whole parse-and-build once with a flag so a second restart
+does not loop (gmake restarts at most until nothing changes; one restart satisfies these witnesses — say so in
+the README). A missing `include` whose target has **no** rule stays the fatal error it is today, with gmake's two
+lines (`Makefile:1: generated.mk: No such file or directory` then `*** No rule to make target 'generated.mk'.
+Stop.` — paste them). Rows: `include2/` (`rows`: `missing`, `soft-missing`, `stale`, each comparing the files
+left behind). Commit red, then `include: remake out-of-date included makefiles and restart`.
+
+**Verify:** the three rows; `./test.sh | tail -1`. Stop.
+
+### P1.14 — the recursion variables
+
+Witness (`sub/Makefile` and `sub/deep/Makefile` each echo the same line and recurse one level further):
+```
+all:
+	@printf "L=[$(MAKELEVEL)] env=[%s]\n" "$$MAKELEVEL"
+	@$(MAKE) -C sub
+```
+gmake: `L=[0] env=[1]`, then `gmake[1]: Entering directory '…/sub'`, `L=[1] env=[2]`, `gmake[2]: Entering
+directory '…/sub/deep'`, `L=[2] env=[3]`, and the matching `Leaving` lines. mk: `env=[]` and `L=[0]` at every
+level, and no `[N]`.
+- `MAKELEVEL`: read from the environment at start (default 0); the variable is that number; the environment of
+  every recipe carries `MAKELEVEL` = that number **+ 1** (export it always).
+- The program-name prefix on `Entering directory`/`Leaving directory` and on every `mk: ***` line is `mk[N]:`
+  when `MAKELEVEL` is N > 0 (`mk:` at level 0). One function builds the prefix; every stderr line uses it.
+- `MAKEFLAGS` is exported to recipes (so a sub-make inherits `-k`, `-s`, `-n`, `-j2`; the jobserver word is track
+  05's and stays absent, as the README says).
+- Under `-n`, a recipe line that contains `$(MAKE)` or `${MAKE}` is **run**, not just printed (the manual, *How
+  the MAKE Variable Works*): gmake's `-n` with `@$(MAKE) -C sub` prints the sub-make's `Entering` lines. Same
+  mechanism as P1.8's `+`.
+Rows: `recursion/` (`rows`: `levels`, `flags -k -j2` — the sub-make echoes `[$(MAKEFLAGS)]` — and `dry -n`).
+Commit red, then `recursion: MAKELEVEL, the [N] prefix, MAKEFLAGS inherited, $(MAKE) lines run under -n`.
+README *Known differences*: `MAKE` is the literal `mk` until `env_arg0()` (0.2.36); the jobserver word is absent.
+Re-paste the row count. CHANGELOG. Stop for the second judge (the reviewer re-runs the 182 probes).
+
+**Verify:** the three rows; `./test.sh | tail -1`; `git log --oneline | head -12`. Stop.
