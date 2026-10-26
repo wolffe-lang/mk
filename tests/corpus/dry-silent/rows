@@ -1,0 +1,3 @@
+R dry-silent -n -s
+R dry-silent -n -s -k
+R dry-silent -n -s -k -j2
