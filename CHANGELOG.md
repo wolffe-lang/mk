@@ -70,6 +70,16 @@
 - The `mk[N]:` prefix is used for error messages in sub-makes
 - README updated with new accepted constructs and test counts (50 unit tests, 155 corpus rows)
 
+### Fixed
+
+- `include` of an absent file that has a rule now builds it and restarts (like gmake does)
+- Conditionals five or more deep now work (the `endif` was incorrectly popping all entries)
+- `else ifeq` followed by `else` now works correctly
+- `unexport` then `export` re-exports (the last directive wins)
+- `-n` with `-s` still echoes (silent never silences the dry run's echo)
+- A BOM (U+FEFF) at the start of a file is skipped
+- README *Known differences* updated to reflect the one real difference (`$(MAKE)` expands to literal `mk`)
+
 ## 0.2.1 (2026-10-23)
 
 ### Fixed

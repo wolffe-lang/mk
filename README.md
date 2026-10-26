@@ -113,9 +113,8 @@ A prerequisite with no rule that does not exist is an error:
 
 - Usage errors print `mk`'s own option list, not GNU make's (`gmake -x` prints 50 lines
   of options; `mk -x` prints its usage; the first line agrees and the E1 row checks it)
-- `$(MAKE)` in a recipe line is run under `-n` (dry-run mode), like `+` prefix lines,
-  so recursive make invocations work correctly in dry-run mode
-- Sub-makes inherit flags from `MAKEFLAGS` in the environment, matching GNU make's behavior
+- `$(MAKE)` expands to the literal `mk` (gmake prints its absolute path); this changes
+  when wolf 0.2.36's `env_arg0()` lands
 
 ## Tests
 

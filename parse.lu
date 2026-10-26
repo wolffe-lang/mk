@@ -1062,6 +1062,15 @@ fn parse_makefile(
                 line_num += 1
                 continue
             }
+            // Remove from unexported list (export after unexport re-exports)
+            var i = 0
+            while i < v.unexported.len {
+                if v.unexported[i] == name {
+                    let _ = (mut v.unexported).swap_remove(i)
+                    continue
+                }
+                i += 1
+            }
             // Set the exported flag
             set_var_exported(mut v, name, true)
             // If there's an operator, also set the value
@@ -1463,6 +1472,13 @@ fn parse_makefile_file(
         not_found => return io,
         utf8 => return parse,
     }
+    // Skip BOM (U+FEFF) at the start of the file
+    let bom = "\u{FEFF}"
+    let text = if text.starts_with(bom) {
+        text[bom.len..]
+    } else {
+        text
+    }
     parse_makefile(text, path, mut v, cli_names, include_dirs, env_wins, env_names)
 }
 
@@ -1492,6 +1508,13 @@ fn parse_makefile_files(
             denied => return io,
             not_found => return io,
             utf8 => return parse,
+        }
+        // Skip BOM (U+FEFF) at the start of the file
+        let bom = "\u{FEFF}"
+        let text = if text.starts_with(bom) {
+            text[bom.len..]
+        } else {
+            text
         }
         let file_db = parse_makefile(
             text,
