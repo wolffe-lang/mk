@@ -457,3 +457,97 @@ anything its message does not name.
 **Verify:** from a *fresh clone* of your committed head — not the working tree — `wolf build main.lu -o mk && wolf fmt --check
 *.lu && wolf test . && ./test.sh | tail -1`, all green, pasted; `grep -rn DEBUG *.lu` empty, pasted; the five probes above run
 by hand with gmake beside mk, pasted; `git log --oneline | head -10` showing one commit per item. Stop for the fifth judge.
+
+### P1.17 — the fifth judge's six, and a harness that compares against gmake again (one item per session)
+
+**Read first:** `campaign.md`'s *Start of every session* and *Standing rules*; `judge.md`'s **Fifth judge** section whole
+(it corrects two of P1.16's own descriptions — items 2 and 4b — so where P1.16 and this section disagree, this section is
+right; every byte below was pasted from `gmake` 4.4.1 at `b21258e`).
+
+**How this prompt runs.** The reviewer drives this prompt one item at a time and gives you one item per session. Do only the
+item you are given, then stop and paste its verify. Do not start the next item. Each item is: the row first, run red and
+committed red; then the fix; the row green; the whole `./test.sh` green except rows a *later* item of this prompt fixes
+(name them).
+
+**The one rule this prompt adds.** A row that names a judge's probe uses the probe's Makefile **byte for byte** and the
+probe's arguments, and compares against `gmake` through `same_as_make`. Never change a row's Makefile, its arguments or its
+expected bytes to make it pass, and never add a row kind that checks only `mk`. If you believe gmake's behaviour is wrong or
+a row cannot pass, stop and say so — the reviewer decides.
+
+0. **The harness compares against gmake again** (no `mk` code changes). Three edits in `test.sh` and one in a rows file:
+   - The dispatch at the bottom of `test.sh` reads `R) same_as_make "R" "$dir" $args ;;` since `6bf10a7`, which passes a
+     rows line's **name** (its first word) to make as a goal. Restore the line it replaced at `725acee`:
+     `R) set -- $args; same_as_make "$1" "$dir" "${@:2}" ;;` (check with `git show 725acee:test.sh | grep -n 'same_as_make "\$1"'`).
+   - Delete the `I1` row kind: the `include-two-missing` skip in the rows loop (`[ "$d" = "include-two-missing" ] && continue`
+     and its comment), the `I1 include-two-missing` matrix line, the `I1) test_i1 …` case and the whole `test_i1` function.
+     `include-two-missing/` then runs through `same_as_make` from its `rows` file like every other directory (make sure the
+     file has a row line: `twice` with no arguments).
+   - `tests/corpus/recursion/rows`: replace `/Users/mfwolffe/LocalLLM/Projects/mk/mlx-wollf-v7sf3/v3` with `$ROOT` in all
+     three lines (`same_as_make` expands `--env` values, and `ROOT` is `test.sh`'s own directory), so a fresh clone runs its own
+     `mk`.
+   Verify: `./test.sh | grep -E '^FAIL'` — the four `R fail`/`R prefix`/`R recursion` failures are gone; what fails now is
+   only what items 1–5 fix (expected: `include-two-missing`, because mk names both files — paste exactly what fails). Commit
+   `test.sh: rows name the row, not a goal; recursion uses the checkout's mk; drop the mk-only I1 row`.
+
+1. **A goal given twice.** gmake, with `plain:` ␊ `<tab>@echo plain` and `gmake plain plain`: stdout `plain` ␊
+   `gmake: 'plain' is up to date.` (that line is on **stdout**), exit 0. mk prints `plain` only. Before writing code, run
+   `gmake` on three more forms and paste each: `gmake plain plain plain`; a file target that exists (`touch out; printf
+   'out:\n\t@echo built\n' > Makefile; gmake out out`); and `all: a` ␊ `a:` ␊ `<tab>@echo a` with `gmake all a`. Row
+   directory `dup-goal/` (the `plain` Makefile; rows `twice plain plain` and `thrice plain plain plain`). The goal loop is in
+   `run.lu` (`build_goals_serial`, `build_goals_parallel`): a goal already remade in this run prints `mk: 'NAME' is up to
+   date.` on stdout. Commits `rows: dup-goal (red)`, `goals: a repeated goal is up to date`.
+
+2. **`-k -j N` and a missing goal.** In `tests/corpus/fail/`, `gmake -k -j 2 k1` prints `gmake: *** No rule to make target
+   'k1'.` and exits 2; mk adds `mk: Target 'k1' not remade because of errors.` The serial `-k` path already agrees; only the
+   `-j` path adds the line. Add the row `k1-goal -k -j 2 k1` to `fail/rows`. Find where `build_goals_parallel` prints
+   `not remade because of errors` and make it follow the serial path's rule (gmake prints that line only for a target whose
+   prerequisite failed, never for a goal with no rule). Commits `rows: -k -j missing goal (red)`, `parallel: no 'not remade'
+   line for a goal with no rule`.
+
+3. **Missing makefiles: `include` names the first, `-f` names every one.** P1.16 item 2 was the judge's error.
+   - `include first.mk` ␊ `include second.mk` ␊ `all:` ␊ `<tab>@echo all`, neither file makeable → gmake stderr exactly
+     `Makefile:1: first.mk: No such file or directory` ␊ `gmake: *** No rule to make target 'first.mk'.  Stop.`, exit 2.
+     mk now also prints `Makefile:2: second.mk: …` — undo that part of P1.16 so only the first is named.
+   - `all:` ␊ `<tab>@echo [$(X)]` with `gmake -f first.mk -f second.mk` (neither exists) → gmake stderr exactly
+     `gmake: first.mk: No such file or directory` ␊ `gmake: second.mk: No such file or directory` ␊ `gmake: *** No rule to
+     make target 'first.mk'.  Stop.`, exit 2 (no `Makefile:N:` prefix: these are command-line makefiles). mk names only
+     `first.mk`. Collect every missing `-f` file before stopping.
+   Rows: `include-two-missing/` (the `include` form above, row `twice`) and a new `two-files/` (that Makefile, row
+   `both -f first.mk -f second.mk`). Commits `rows: two missing includes, two missing -f files (red)`, `include names the
+   first missing file; -f names every missing file`.
+
+4. **The include whose rule fails.** The judge's probe `include-stale-remake`, byte for byte:
+   ```
+   include generated.mk
+   all:
+   <tab>@printf "X=[$(X)]\n"
+   generated.mk: source
+   <tab>@printf "X = regenerated\n" > $@
+   ```
+   (no `source` file) → gmake stderr exactly `Makefile:1: generated.mk: No such file or directory` ␊ `gmake: *** No rule to
+   make target 'source', needed by 'generated.mk'.  Stop.`, exit 2. mk prints only the second line: P1.16 item 1 silenced the
+   first line whenever a rule *exists*; gmake silences it only when the remake *succeeds* (`include-remake` stays as it is,
+   at parity). Row `include-stale-remake/`. Commits `rows: include-stale-remake (red)`, `include: name the missing file when
+   its rule fails`.
+
+5. **The recipe bytes, as the probes are.** Replace the two P1.16 rows' fixtures with the judge's bytes and **no arguments**
+   (delete the `-n` rows lines):
+   - `tests/corpus/tab-only/`: two Makefiles are needed, so make two directories: `tab-only/` with `all:` ␊ `<tab>` ␊
+     `<tab>@echo ok` ␊ (bytes `61 6c 6c 3a 0a 09 0a 09 40 65 63 68 6f 20 6f 6b 0a`) and `tab-only-after/` with `all:` ␊
+     `<tab>@echo ok` ␊ `<tab>` ␊. gmake prints exactly `ok` ␊ for both; mk prints an extra empty line (before, or after).
+   - `tests/corpus/terminal-backslash/Makefile`: exactly 17 bytes, **ending in the backslash, no final newline**:
+     `printf 'all:\n\tprintf end\\' > tests/corpus/terminal-backslash/Makefile` and check `od -c` shows `\` last. gmake stdout
+     is `printf end\` ␊ ␊ `end` (no newline after `end`); mk drops the empty line.
+   Paste `od -c` of all three Makefiles. Rows red, committed; then the fix in the recipe reader (`parse.lu`, where a recipe
+   line's text is taken after the tab, and where a line ends at end of file). Commits `rows: tab-only, terminal-backslash as
+   the probes are (red)`, `recipes: a tab-only line prints nothing; a final backslash keeps gmake's empty line`.
+
+6. **`cond-deep/`** (P1.16 item 5 left it out): the judge's `conditional-six-deep` probe extended to eight — eight
+   `ifeq (a,a)` lines, `X = deep`, eight `endif`, then `all:` ␊ `<tab>@echo $(X)` → `deep`. Row `eight`. It should already be
+   green (P1.15 fixed it); add it as a guard. Then the CHANGELOG's `### Fixed` lines for items 1–5 and `test.sh`'s count in
+   the README. Commits `rows: cond-deep`, `CHANGELOG, README: P1.17`.
+
+**Verify (after item 6):** from a **fresh clone** of the committed head — `git clone -q . /tmp/…` is not allowed; clone into a
+directory under this project, e.g. `git clone -q . .verify && cd .verify && wolf build main.lu -o mk && wolf fmt --check *.lu
+&& wolf test . && ./test.sh | tail -1; cd .. && rm -rf .verify` — all green, pasted; the items' probes run by hand with gmake
+beside mk, pasted; `git log --oneline | head -14`. Stop for the sixth judge.

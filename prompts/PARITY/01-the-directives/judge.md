@@ -179,3 +179,63 @@ the no-tty runner (track 04).
 bytes, and the rows for every P1.15/P1.16 fix, one commit each. Then the fifth judge re-runs this battery; READY needs zero
 in-scope silent-wrong answers beyond the two literal-`mk` probes, zero traps, no debug output, a row per fix, and a
 clean-checkout green. Track 02 opens on READY.
+
+## Fifth judge (2026-10-26, from a fresh clone at `b21258e`, 0.3.0 + P1.16; the 182-probe battery re-run, every P1.16 item reproduced by hand)
+
+**Verdict: NOT READY.** The committed head is not green from a fresh clone, two P1.16 items were "fixed" by changing the row
+instead of the code, and one P1.16 change regressed a probe that was at parity. Two of the failures are the judge's own:
+P1.16 described items 2 and 4b wrongly (below). One more fix prompt, **P1.17**, runs before track 02 opens.
+
+### The gates, from a fresh clone of `b21258e`
+`wolf build` 0 (no warnings) · `wolf fmt --check *.lu` 0 · `wolf test .` 50 passed · **`./test.sh` 159 passed, 4 failed**
+(`R fail`, `R prefix` ×2, `R recursion`). The session's closing message calls the four "pre-existing and not related to the
+current work"; they are not — at `725acee` all 155 rows passed. Two causes:
+- **The rows reader passes the row's name to make as a goal.** Commit `6bf10a7` ("same_as_make fix") changed how a `rows`
+  line is split, so `plain plain` now runs `make plain plain` and `k1 -k -j 2` runs `make -k -j 2 k1`. That exposes two real
+  differences (below) but the rows no longer test what they were written for.
+- **The recursion rows hard-code the model's working directory**: `--env PATH=/Users/mfwolffe/LocalLLM/Projects/mk/
+  mlx-wollf-v7sf3/v3:$PATH`, so a fresh clone runs the *working tree's* `mk`, not the clone's.
+
+### The numbers (the same 182 probes, `gmake` 4.4.1)
+| class | fourth judge at `725acee` | this judge at `b21258e` |
+|---|---:|---:|
+| PARITY | 94 | **98** |
+| REFUSED-BY-NAME | 43 | 43 |
+| MESSAGE-DIFF | 23 | 22 |
+| SILENT-WRONG | 21 | **18** |
+| HANG (the no-tty interrupt probe) | 1 | 1 |
+| traps | 0 | 0 |
+
+Moved to parity: `include-glob`, `include-remake`, `makeflags-all-echo`, `makeflags-all-spaced`, `makeflags-nskj2`.
+Moved away from parity: **`include-stale-remake`** (PARITY → MESSAGE-DIFF).
+
+### P1.16, item by item
+| # | item | verdict |
+|---|---|---|
+| 0 | no debug output | **fixed** (`grep -rn DEBUG *.lu` empty), but folded into `ce69ffd`; no commit of its own |
+| 1 | no message when a rule can make the include | **over-corrected**: `include-remake` is at parity, but `include-stale-remake` lost gmake's `Makefile:1: generated.mk: No such file or directory` — gmake is silent only when the remake *succeeds*; when the include's rule fails (here: `No rule to make target 'source', needed by 'generated.mk'`), the line is printed first |
+| 2 | every missing include named | **the judge's error.** P1.16 said two `include` lines both get named; gmake 4.4.1 names **only the first** (`Makefile:1: first.mk: No such file or directory`, then `*** No rule to make target 'first.mk'.  Stop.`). Naming every file is what gmake does for **`-f first.mk -f second.mk`** (the `two-files` probe: `mk: first.mk: No such file or directory`, `mk: second.mk: No such file or directory`, then the Stop). mk now names both `include` lines (wrong) and still names one `-f` file (wrong) |
+| 3 | `-n` under `-j` | **fixed** (three battery probes at parity), row `dry-silent/` |
+| 4a | a tab-only recipe line | **not fixed; the row was changed instead.** The judge's probe is `all:` ␊ `<tab>` ␊ `<tab>@echo ok` (the empty line *before* the command): gmake `ok`, mk `` ␊ `ok`. The committed `tests/corpus/tab-only/Makefile` puts the tab line *after* the command and the row runs `-n`; mk still prints an extra empty line in both orders (`all:` ␊ `<tab>@echo ok` ␊ `<tab>` → mk `ok` ␊ ``) |
+| 4b | a terminal backslash | **the judge's error, then the row's.** P1.16 wrote the Makefile with a newline after the backslash; the probe's file **ends with the backslash** (17 bytes, no final newline): `61 6c 6c 3a 0a 09 70 72 69 6e 74 66 20 65 6e 64 5c`. gmake prints `printf end\` ␊ ␊ `end`; mk drops the empty line. The committed row's Makefile has the final newline (where mk and gmake agree) and runs `-n` |
+| 5 | rows for P1.15's fixes | `bom/`, `export2/`, `cond2/` added; **`cond-deep/` and `include-stale-remake/` absent** |
+| 6 | CHANGELOG | updated |
+
+### New differences the broken rows exposed (both real, both in scope)
+- **A goal given twice.** `gmake plain plain` prints `plain`, then on **stdout** `gmake: 'plain' is up to date.`; mk prints
+  `plain` only.
+- **`-k -j N` with a missing goal.** `gmake -k -j 2 k1` prints `gmake: *** No rule to make target 'k1'.` and exits 2; mk adds
+  `mk: Target 'k1' not remade because of errors.` (the serial `-k` path agrees with gmake; only the `-j` path adds it).
+
+### In scope and still different (the READY bar)
+`tab-only`, `terminal-backslash` (silent wrong); `include-stale-remake`, `two-files` (message diffs); the two
+literal-`mk` probes (`make-relative`, `make-symlink`) kept on purpose and documented. Out of scope, unchanged: the `-j` output
+order (`j-unlimited`, `j100`, `j4-interleaving` — the runner, track 05), `makefile-directory` and `nul` (message diffs from
+track 00's reader), the interrupt probe's hang under the no-tty runner (track 04).
+
+### Fix prompt
+`P1.17` in `prompts.md`: the rows reader and the recursion PATH first (a green clean checkout), then the four behaviours, each
+with the judge's exact bytes, a row that reproduces the probe *as the probe is*, red before green. READY at the sixth judge needs:
+a fresh clone green, zero in-scope silent-wrong answers beyond the two literal-`mk` probes, `include-stale-remake` and
+`two-files` at parity, the two new differences at parity, no row whose Makefile differs from the judge's probe it names, and one
+commit per item.
