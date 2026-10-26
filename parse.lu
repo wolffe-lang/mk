@@ -1279,7 +1279,6 @@ fn parse_makefile(
                         // No matches - record for potential remaking.
                         // Do NOT fail here: the file might have a rule to build it.
                         // The error check happens after the graph is built (in main.lu).
-                        eprint("DEBUG: include {expanded} not found, recording as missing")
                         (mut db.included_files).push(IncludedFile {
                             path: expanded,
                             found: false,
