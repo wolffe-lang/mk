@@ -1,0 +1,2 @@
+# bom test: mk should handle BOM at the start of the file
+-f Makefile

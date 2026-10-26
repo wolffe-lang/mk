@@ -1,5 +1,5 @@
-R cond2 paren-unequal -f paren-unequal.mk
-R cond2 paren-space -f paren-space.mk
-R cond2 quote-double -f quote-double.mk
-R cond2 quote-mixed -f quote-mixed.mk
-R cond2 quote-space -f quote-space.mk
+cond2 paren-unequal -f paren-unequal.mk
+cond2 paren-space -f paren-space.mk
+cond2 quote-double -f quote-double.mk
+cond2 quote-mixed -f quote-mixed.mk
+cond2 quote-space -f quote-space.mk
