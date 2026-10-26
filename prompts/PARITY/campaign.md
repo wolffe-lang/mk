@@ -122,7 +122,7 @@ differ from the compiler's and often name the place. Do not rewrite the file the
 | `07-the-proof` | 1.0.0 | a corpus of real Makefiles; a random-Makefile differential fuzzer against `gmake`; the message sweep; the README as a parity table | 4 |
 
 Each track's `prompts.md` is written when the track opens, from the code as it then stands, so its hints
-name real functions. `00` and `01` are written now.
+name real functions. `00`, `01` and `02` are written now.
 
 ## Ledger
 
@@ -131,3 +131,4 @@ name real functions. `00` and `01` are written now.
 | 00-the-oracle | 2026-10-23 | 2026-10-23, 2026-10-24 | NOT READY on 2026-10-23 (three probes outside the corpus; P0.4–P0.6); **READY** on 2026-10-24 at `5942bdd` (0.2.1): 100/100, the three probes agree (`00-the-oracle/judge.md`) |
 | 01-the-directives | 2026-10-24 | P1.1 judged 2026-10-24 | P1.1 **NOT READY**: nothing committed, fmt red, unterminated and self-referencing variables not GNU's error, `$xy`, `sh` vs `/bin/sh`, an unasked 0.2.2 (`01-the-directives/judge-P1.1.md`, fix prompt P1.1b) |
 | 01-the-directives | 2026-10-24 | 2026-10-25 at `ea14a8f` (0.3.0) | **NOT READY**: 182 probes vs gmake 4.4.1 → 52 parity, 15 refused by name, 39 message diffs, **72 silent wrong answers**, 0 crashes; functions not refused in recipes (`$(error)` exits 0), `.DEFAULT_GOAL` set ignored, `else ifeq` and quoted `ifeq` wrong, export origin/state lost, includes never remade, MAKELEVEL not exported, `-@`/`+` prefixes, `$^` dedup, 14 build warnings (`01-the-directives/judge.md`; fix prompts P1.8–P1.14) |
+| 01-the-directives | 2026-10-24 | 2026-10-25 evening at `f8fa153` (0.3.0 + P1.8–P1.14) | **NOT READY, by a short margin**: the battery re-run → 90 parity, 43 refused by name, 22 message diffs, **26 silent wrong** (9 in scope), 1 trap (a BOM); the committed head not green on its own (fmt, the unit-test call site), 19 commits unpushed; fix prompt P1.15 (`01-the-directives/judge.md`, third judge). **Track 02's prompts written** (`02-the-functions/prompts.md`, P2.1–P2.8); it opens when the fourth judge says READY |

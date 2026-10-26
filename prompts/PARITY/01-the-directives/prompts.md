@@ -379,3 +379,43 @@ README *Known differences*: `MAKE` is the literal `mk` until `env_arg0()` (0.2.3
 Re-paste the row count. CHANGELOG. Stop for the second judge (the reviewer re-runs the 182 probes).
 
 **Verify:** the three rows; `./test.sh | tail -1`; `git log --oneline | head -12`. Stop.
+
+### P1.15 — the third judge's nine (a fresh session)
+
+Read `judge.md`'s *Third judge* section first. Every item was reproduced outside the corpus against `gmake` 4.4.1; the
+expected bytes are there. Order and commits:
+
+0. **Make the committed head green.** `wolf fmt *.lu` (parse.lu reflows), fix `mk_test.lu`'s `parse_makefile` call (the
+   seventh argument `env_names`), run the three gates, commit `fmt and the unit-test call site`. Nothing else in this commit.
+1. **`include` of an absent file that has a rule.** In the include path (parse.lu, where P1.13 remakes an out-of-date
+   include): when the named file does not exist, do not fail yet — record it as *missing*, finish reading the Makefile, then
+   if a rule can make it, build it and restart the read (the same restart P1.13 uses); if no rule can, print gmake's two
+   lines (`Makefile:1: gen.mk: No such file or directory` then `mk: *** No rule to make target 'gen.mk'.  Stop.`, exit 2).
+   `-include`/`sinclude` of an absent file with a rule also builds it (gmake does); without a rule stays silent. Report
+   **every** missing include before stopping (`first.mk`, `second.mk`, then the `No rule` line for the first). When the
+   include's own prerequisite is missing the message is `No rule to make target 'source', needed by 'generated.mk'`.
+   Rows: `include-remake/` (absent + rule, `include` and `-include` rows), `include-two-missing/`. Commit red, then
+   `include: build an absent included file that has a rule, report every missing include`.
+2. **Conditionals five or more deep.** Find why `cond_stack` stops at four (a literal capacity, a `len` compared to a
+   constant, a `line_num` off by one at the fifth push); nest eight in a unit test and a row (`cond-deep/`). Commit
+   `conditionals: any nesting depth`.
+3. **`unexport` then `export` re-exports.** The last directive for a name wins, in file order; row in `export2/`; commit
+   `export: the last directive wins`.
+4. **`-n` with `-s` still echoes.** `-s` suppresses the echo of a line that will run; under `-n` nothing runs and gmake
+   prints every line it would run, `-s` or not. Row in `recursion/` or a new `dry-silent/` with `-n -s` and `-n -s -k -j2`
+   (`MAKEFLAGS` is `ns` / `kns -j2`: the single letters sorted, then `-jN`). Commit `dry run: -s does not silence -n`.
+5. **A BOM is whitespace.** Skip EF BB BF at the start of a makefile's first line (and of an included file); never index past
+   a line's end in `expand_inner` (the trap at expand.lu:44 is a bounds read: guard it so a malformed byte sequence is an
+   error with the file and line, not a trap). Row `bom/` with the BOM bytes committed as a fixture. Commit `reader: a BOM is
+   whitespace; no bounds trap in the expander`.
+6. **A tab-only recipe line** is an empty recipe line gmake does not print. **A trailing backslash at end of file** keeps
+   gmake's extra empty line in the echo (paste the bytes from `gmake` into the row). Rows in `recipes/`. Commit
+   `recipes: tab-only lines and a terminal backslash`.
+7. **README** *Known differences*: replace the two lines that describe behaviours that agree with gmake (`$(MAKE)` under
+   `-n`, `MAKEFLAGS` inheritance belong in *Accepted*) with the one real difference: `$(MAKE)` expands to the literal `mk`
+   until wolf 0.2.36's `env_arg0()` (gmake prints its absolute path). Re-paste the row count. CHANGELOG `### Fixed`.
+   Commit `README: the one known difference`.
+
+**Verify:** from a *fresh clone* of your pushed head — not the working tree — `wolf build main.lu -o mk && wolf fmt --check
+*.lu && wolf test . && ./test.sh | tail -1`, all green, pasted; then the nine probes from `judge.md` run by hand with gmake
+beside mk, pasted. `git log --oneline | head -12`. Stop for the fourth judge.

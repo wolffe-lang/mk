@@ -86,3 +86,37 @@ P1.8 the warnings, the prefixes and the baseline corrections · P1.9 refuse by n
 `.DEFAULT_GOAL` set · P1.11 conditionals, gmake's way · P1.12 export origin and state · P1.13 remaking
 included makefiles · P1.14 the recursion variables. Then the second judge, from a fresh clone, re-running the
 182 probes (`~/lanes/mkj1/probes/`, `results.json` names each) and the corpus; READY opens track 02.
+
+## Third judge (2026-10-25 evening, from a clean checkout at `f8fa153`, 0.3.0 + P1.8–P1.14; the first judge's 182-probe battery re-run, plus probes of the reviewer's own)
+
+**Verdict: NOT READY, by a short margin. One fix prompt (P1.15) runs before track 02 opens. Track 02's prompts are written.**
+
+### The numbers (the same 182 probes as the second judge, against `gmake` 4.4.1, the program name and the copy path normalised)
+
+| class | second judge at `ea14a8f` | this judge at `f8fa153` |
+|---|---:|---:|
+| PARITY | 52 | **90** |
+| REFUSED-BY-NAME | 15 | **43** |
+| MESSAGE-DIFF | 39 | 22 |
+| SILENT-WRONG | **72** | **26** |
+| HANG (the interrupt probe, both tools under the reviewer's no-tty runner) | 0 | 1 |
+
+Of the 26 silent-wrong answers, 17 are outside this track (the function refusals of track 02 are correct by name now; `-j` output ordering is the reviewer's runner, which no longer sorts; the options of track 05). **The nine in scope**, each reproduced by hand outside the corpus:
+
+1. **The committed head is not green on its own.** From a clean checkout: `wolf build` 0, but `wolf fmt --check *.lu` → `parse.lu is not canonically formatted`, and `wolf test .` → `0 passed; 1 rejected` (`mk_test.lu`'s `parse_makefile` call lacks the `env_names` argument P1.12 added). The session's final "all green" was true of its *working tree* — a formatted `parse.lu` and a fixed `mk_test.lu` sit uncommitted beside `f8fa153`. 19 commits are unpushed. (Campaign rules 3 and 5: the gates run on what is committed.)
+2. **`include` of a file that does not exist yet but has a rule** (`include-remake`, `soft-include-remake`): `include gen.mk` with `gen.mk: ; @printf "X = made\n" > $@` → gmake makes it and restarts (`X=[made]`); mk stops with `No such file or directory` / `No rule to make target 'gen.mk'`, and `-include` silently gives `X=[]`. P1.13 landed the *out-of-date* remake only; the *absent* case is the common one (generated dependency files).
+3. **Conditionals nested five or more deep** (`conditional-six-deep`): five `ifeq (a,a)` … five `endif` → gmake `deep5`; mk `Makefile:8: *** missing 'endif'.  Stop.` at depth 5, 6 and 7 (depth 4 passes). A fixed stack or an off-by-one in `parse_makefile`'s `cond_stack`.
+4. **`unexport` then `export`** (`unexport-reexport`): `export X = original` / `unexport X` / `export X` → gmake `[original]`; mk `[]`. The last directive wins; mk keeps the unexport.
+5. **`-n` with `-s` prints nothing** (`makeflags-all-echo`, `-all-spaced`, `-nskj2`): `@echo [$(MAKEFLAGS)] END` under `-n -s` → gmake `echo [ns] END` (silent never silences the dry run's echo); mk prints nothing. `-n` alone agrees (`echo [n] END`).
+6. **A UTF-8 BOM crashes mk** (`bom`): a Makefile starting with EF BB BF → gmake `ok`; mk `wolf-trap: bounds at ./expand.lu:44:9`, exit 134. The only trap in the battery. gmake treats the BOM as whitespace before the first line.
+7. **A recipe line that is only a tab** (`tab-only`) prints an empty line in mk; gmake prints nothing for it.
+8. **A trailing backslash at end of file** (`terminal-backslash`): gmake echoes `printf end\` then an empty line then `end`; mk drops the empty line.
+9. **Every missing `include` is reported before stopping** (`two-files`, a message diff): `include first.mk` / `include second.mk` → gmake names both files then stops on the first; mk names only the first. And `include-stale-remake`: when the included file's prerequisite is missing, gmake's message is `No rule to make target 'source', needed by 'generated.mk'`; mk's names `generated.mk` alone.
+
+Kept on purpose, correctly: `$(MAKE)` is the literal `mk` (`make-relative`, `make-symlink`; gmake prints its absolute path) until `env_arg0()` at 0.2.36 — but the README's *Known differences* does not say so (P1.14 asked; the entry written instead describes `-n` and `MAKEFLAGS`, which are not differences).
+
+### What holds
+P1.8–P1.14's substance is in: functions are refused by name in recipes too (`$(error)` no longer exits 0), `.DEFAULT_GOAL` set works, `else ifeq` and the quoted forms agree, export origin and state survive, `MAKELEVEL`/`MAKEFLAGS` reach sub-makes with the `mk[N]:` prefix, `$(MAKE)` lines run under `-n`, the out-of-date include remake restarts; `./test.sh` 155/155 on both the working tree and the clean head; 38 of the 72 silent-wrong answers of the second judge are parity now and 28 more are honest refusals.
+
+### Fix prompt
+`P1.15` below in `prompts.md`: items 1–9 and the README line, one session. Then push (the maintainer's step) and the fourth judge re-runs this battery; READY needs zero in-scope silent-wrong answers, zero traps, and a clean-checkout green.
