@@ -1,3 +1,3 @@
-levels --env PATH=/Users/mfwolffe/LocalLLM/Projects/mk/mlx-wollf-v7sf3/v3:$PATH --
-flags -k -j2 --env PATH=/Users/mfwolffe/LocalLLM/Projects/mk/mlx-wollf-v7sf3/v3:$PATH --
-dry -n --env PATH=/Users/mfwolffe/LocalLLM/Projects/mk/mlx-wollf-v7sf3/v3:$PATH --
+levels --env PATH=$ROOT:$PATH --
+flags -k -j2 --env PATH=$ROOT:$PATH --
+dry -n --env PATH=$ROOT:$PATH --

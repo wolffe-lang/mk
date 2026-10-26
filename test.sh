@@ -78,8 +78,6 @@ R1 functions
 P1 vars"
 for rows in "$CORPUS_DIR"/*/rows; do
     d=$(basename "$(dirname "$rows")")
-    # Skip include-two-missing — it uses I1, not R (mk reports both missing includes, gmake reports only the first)
-    [ "$d" = "include-two-missing" ] && continue
     local_env=""
     while IFS= read -r line; do
         case "$line" in
@@ -98,8 +96,7 @@ done
 MATRIX="$MATRIX
 RJ refuse
 RJ functions
-E1 wide
-I1 include-two-missing"
+E1 wide"
 
 # Count expected rows (trim leading newline first)
 EXPECTED=$(echo "$MATRIX" | tail -n +2 | wc -l)
@@ -157,7 +154,6 @@ run_test() {
         P1) test_p1 "$copy" "$dir" ;;
         RJ) test_rj "$copy" "$dir" ;;
         E1) test_e1 "$copy" "$dir" ;;
-        I1) test_i1 "$copy" "$dir" ;;
     esac
 
     # Clean up the copy
@@ -453,26 +449,6 @@ test_e1() {
     fi
 }
 
-# I1: include-two-missing — mk reports both missing includes before stopping
-test_i1() {
-    local copy="$1" dir="$2"
-    clean_copy "$copy" "$dir"
-    local copy_real
-    copy_real=$(cd "$copy" && pwd -P)
-    local mk_out=$("$MK" -C "$copy" -f Makefile 2>&1 | sed "s|$copy_real|DIR|g" | normalize)
-    local mk_st=0
-    mk_out=$("$MK" -C "$copy" -f Makefile 2>&1 | sed "s|$copy_real|DIR|g" | normalize) || mk_st=$?
-    # mk must exit 2 and report both missing includes
-    # Note: normalize replaces .mk with .MAKE, so grep for that
-    if [ "$mk_st" -eq 2 ] && printf '%s\n' "$mk_out" | grep -q 'first.MAKE' && printf '%s\n' "$mk_out" | grep -q 'second.MAKE'; then
-        echo "ok I1 $dir"
-        PASS=$((PASS + 1))
-    else
-        echo "FAIL: I1 $dir (exit $mk_st, output: $mk_out)"
-        FAIL=$((FAIL + 1))
-    fi
-}
-
 # P1: mk -p on vars matches the golden file
 test_p1() {
     local copy="$1" dir="$2"
@@ -565,7 +541,7 @@ MATRIX_FILE=$(mktemp)
 echo "$MATRIX" > "$MATRIX_FILE"
 while read -r row dir args; do
     case "$row" in
-        R) same_as_make "R" "$dir" $args ;;
+        R) set -- $args; same_as_make "$1" "$dir" "${@:2}" ;;
         *) run_test "$row" "$dir" ;;
     esac
 done < "$MATRIX_FILE"
