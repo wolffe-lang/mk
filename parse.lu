@@ -855,19 +855,24 @@ fn parse_makefile(
                     eprint("{file}:{line_number}: *** only one 'else' per conditional.  Stop.")
                     return parse
                 }
-                // Mark else_seen on the top entry
-                var entry = cond_stack[top_idx]
-                entry.else_seen = true
-                cond_stack[top_idx] = entry
                 // If the top entry is live, the else-if is ignored (lines are not live)
                 if cond_stack[top_idx].live {
                     // Push a new entry for the else-if branch (not live)
-                    (mut cond_stack).push(CondEntry { live: false, else_seen: false, line: line_number })
+                    (mut cond_stack).push(CondEntry {
+                        live: false,
+                        else_seen: false,
+                        line: line_number,
+                    })
                     line_num += 1
                     continue
                 }
                 // The top entry is not live; evaluate the else-if condition
-                let result = eval_conditional(v, stripped, cond_kind, line_number) else |e| match e {
+                let result = eval_conditional(
+                    v,
+                    stripped,
+                    cond_kind,
+                    line_number,
+                ) else |e| match e {
                     parse => {
                         eprint("{file}:{line_number}: *** invalid syntax in conditional.  Stop.")
                         return parse
@@ -877,8 +882,10 @@ fn parse_makefile(
                         return parse
                     },
                 }
-                // Push a new entry for the else-if branch
-                (mut cond_stack).push(CondEntry { live: result, else_seen: false, line: line_number })
+                // Update the top entry's live status (don't push a new entry)
+                var entry = cond_stack[top_idx]
+                entry.live = result
+                cond_stack[top_idx] = entry
                 line_num += 1
                 continue
             }
@@ -889,8 +896,8 @@ fn parse_makefile(
                     eprint("{file}:{line_number}: *** missing 'endif'.  Stop.")
                     return parse
                 }
-                // Pop all entries (gmake's endif closes all open conditionals)
-                cond_stack = List[CondEntry]()
+                // Pop the top entry (one endif closes one if)
+                let _ = (mut cond_stack).pop()
                 line_num += 1
                 continue
             }
@@ -1130,7 +1137,13 @@ fn parse_makefile(
                 line_num += 1
                 continue
             }
-            set_var_checked(mut v, assignment.name, assignment.value, assignment.op, assignment.line) else |e| match e {
+            set_var_checked(
+                mut v,
+                assignment.name,
+                assignment.value,
+                assignment.op,
+                assignment.line,
+            ) else |e| match e {
                 Refuse(l, msg) => {
                     (mut db.refusals).push(Refusal { kind: msg, line: l })
                     line_num += 1
@@ -1195,9 +1208,16 @@ fn parse_makefile(
                                         // Check if it's a function call at top level (e.g. $(info hi))
                                         if stripped.starts_with("$(") {
                                             // Try to expand it; if it's a gmake function, refuse it
-                                            let _ = expand(v, stripped, line_number) else |e| match e {
+                                            let _ = expand(
+                                                v,
+                                                stripped,
+                                                line_number,
+                                            ) else |e| match e {
                                                 Refuse(l, msg) => {
-                                                    (mut db.refusals).push(Refusal { kind: msg, line: l })
+                                                    (mut db.refusals).push(Refusal {
+                                                        kind: msg,
+                                                        line: l,
+                                                    })
                                                     line_num += 1
                                                     continue
                                                 },
@@ -1247,20 +1267,16 @@ fn parse_makefile(
                     // Glob the expanded name
                     let globs = glob(expanded)
                     if globs.len == 0 {
-                        // No matches - record for potential remaking
+                        // No matches - record for potential remaking.
+                        // Do NOT fail here: the file might have a rule to build it.
+                        // The error check happens after the graph is built (in main.lu).
+                        eprint("DEBUG: include {expanded} not found, recording as missing")
                         (mut db.included_files).push(IncludedFile {
                             path: expanded,
                             found: false,
                             optional: include.optional,
                             line: include.line,
                         })
-                        if !include.optional {
-                            // Hard include: error
-                            eprint("{file}:{include.line}: {expanded}: No such file or directory")
-                            eprint("mk: *** No rule to make target '{expanded}'.  Stop.")
-                            return parse
-                        }
-                        // Soft include: silent
                         continue
                     }
                     // Read and parse each file
@@ -1274,12 +1290,14 @@ fn parse_makefile(
                             env_names,
                         ) else |e| match e {
                             parse => {
-                                if !include.optional {
-                                    eprint("{file}:{include.line}: {g}: No such file or directory")
-                                    eprint("mk: *** No rule to make target '{g}'.  Stop.")
-                                    return parse
-                                }
-                                // Soft include: silent
+                                // The file could not be parsed (likely missing).
+                                // Record it as missing; the error check happens after the graph is built.
+                                (mut db.included_files).push(IncludedFile {
+                                    path: g,
+                                    found: false,
+                                    optional: include.optional,
+                                    line: include.line,
+                                })
                                 continue
                             },
                             Parse(p) => {
@@ -1291,12 +1309,14 @@ fn parse_makefile(
                                 continue
                             },
                             io => {
-                                if !include.optional {
-                                    eprint("{file}:{include.line}: {g}: No such file or directory")
-                                    eprint("mk: *** No rule to make target '{g}'.  Stop.")
-                                    return parse
-                                }
-                                // Soft include: silent
+                                // The file could not be read (likely missing).
+                                // Record it as missing; the error check happens after the graph is built.
+                                (mut db.included_files).push(IncludedFile {
+                                    path: g,
+                                    found: false,
+                                    optional: include.optional,
+                                    line: include.line,
+                                })
                                 continue
                             },
                         }
@@ -1311,7 +1331,13 @@ fn parse_makefile(
                         for a in sub_db.assignments {
                             (mut db.assignments).push(a)
                             if !map.has(cli_names, a.name) {
-                                set_var_checked(mut v, a.name, a.value, a.op, a.line) else |e| match e {
+                                set_var_checked(
+                                    mut v,
+                                    a.name,
+                                    a.value,
+                                    a.op,
+                                    a.line,
+                                ) else |e| match e {
                                     Refuse(l, msg) => {
                                         (mut db.refusals).push(Refusal { kind: msg, line: l })
                                         continue
@@ -1370,9 +1396,22 @@ fn parse_makefile(
             // Check if the variable is in the environment (for origin tracking)
             if map.has(env_names, assignment.name) {
                 // The variable is in the environment; use the Makefile value but mark as env origin
-                set_var_origin(mut v, assignment.name, assignment.value, assignment.op, assignment.line, "env")
+                set_var_origin(
+                    mut v,
+                    assignment.name,
+                    assignment.value,
+                    assignment.op,
+                    assignment.line,
+                    "env",
+                )
             } else {
-                set_var_checked(mut v, assignment.name, assignment.value, assignment.op, assignment.line) else |e| match e {
+                set_var_checked(
+                    mut v,
+                    assignment.name,
+                    assignment.value,
+                    assignment.op,
+                    assignment.line,
+                ) else |e| match e {
                     Refuse(l, msg) => {
                         (mut db.refusals).push(Refusal { kind: msg, line: l })
                         line_num += 1

@@ -543,12 +543,17 @@ fn run(mut f: Flags) -> int {
             return 2
         },
     }
-    // Check if any included file needs remaking
+    // Check if any included file needs remaking or is missing with a rule
     var needs_restart = false
+    var missing_with_rule = false
     for inc in db.included_files {
-        // Only consider files that have a rule in the graph
         if !map.has(g.nodes, inc.path) {
             continue
+        }
+        if !inc.found {
+            // The file is missing but has a rule to build it
+            missing_with_rule = true
+            break
         }
         // Check if the file is out of date
         var built = Map[str, int]()
@@ -557,16 +562,20 @@ fn run(mut f: Flags) -> int {
             break
         }
     }
-    // If an included file needs remaking, build it and restart (once)
-    if needs_restart && !restarted {
+    // If an included file needs remaking or is missing with a rule, build it and restart (once)
+    if (needs_restart || missing_with_rule) && !restarted {
         restarted = true
-        // Build the included files that need remaking
+        // Build the included files that need remaking or are missing with a rule
         var built = Map[str, int]()
         for inc in db.included_files {
             if !map.has(g.nodes, inc.path) {
                 continue
             }
-            if is_out_of_date(g, inc.path, built) {
+            if !inc.found || is_out_of_date(g, inc.path, built) {
+                // Print "No such file or directory" for missing hard includes (gmake does this)
+                if !inc.found && !inc.optional {
+                    eprint("{primary_file}:{inc.line}: {inc.path}: No such file or directory")
+                }
                 // Build this included file
                 let result = build_recursive(
                     g,
@@ -619,6 +628,43 @@ fn run(mut f: Flags) -> int {
         }
         db = new_db
         g = new_g
+    }
+    // Report missing includes that have no rule to build them
+    // (after the restart, so the graph is final)
+    // Report EVERY missing include before stopping, as gmake does
+    var has_missing_hard = false
+    for inc in db.included_files {
+        if inc.found {
+            continue
+        }
+        // The file is missing
+        if map.has(g.nodes, inc.path) {
+            // It has a rule; it was built above (or will be built as a goal)
+            continue
+        }
+        // No rule to build it
+        if !inc.optional {
+            // Hard include: error
+            has_missing_hard = true
+            eprint("{primary_file}:{inc.line}: {inc.path}: No such file or directory")
+        }
+        // Soft include: silent
+    }
+    if has_missing_hard {
+        // Print the "No rule" line for the first missing hard include
+        for inc in db.included_files {
+            if inc.found {
+                continue
+            }
+            if map.has(g.nodes, inc.path) {
+                continue
+            }
+            if !inc.optional {
+                eprint("{mk_prefix(my_level)} *** No rule to make target '{inc.path}'.  Stop.")
+                break
+            }
+        }
+        return 2
     }
     // Export the environment for recipes
     export_environment(v) else |e| match e {

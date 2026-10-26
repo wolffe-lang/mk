@@ -22,13 +22,23 @@ fn parse_makefile_ok(text: str) -> Database {
     var v = new_vars()
     var cli_names = Map[str, int]()
     var include_dirs = List[str]()
-    parse_makefile(text, "Makefile", mut v, cli_names, include_dirs, false) else Database {
+    var env_names = Map[str, int]()
+    parse_makefile(
+        text,
+        "Makefile",
+        mut v,
+        cli_names,
+        include_dirs,
+        false,
+        env_names,
+    ) else Database {
         assignments: List[Assignment](),
         rules: List[Rule](),
         phonies: List[Phony](),
         includes: List[Include](),
         defines: List[Define](),
         refusals: List[Refusal](),
+        included_files: List[IncludedFile](),
     }
 }
 
