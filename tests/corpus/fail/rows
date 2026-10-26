@@ -3,3 +3,5 @@ again
 again-j2 -j 2
 d1 -n -j 2
 k1 -k -j 2
+k1-goal -k -j 2 k1
+k-recipe -k -j 2 result
