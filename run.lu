@@ -374,6 +374,11 @@ fn build_recursive(
                 // gmake prints every line under -n, regardless of @ or -s.
                 if !silent || dry_run {
                     print(stripped)
+                    // If the line ends with \, gmake prints an extra newline
+                    // (the continuation to the next line, which is empty at EOF)
+                    if dry_run && stripped.ends_with("\\") {
+                        print("")
+                    }
                 }
                 if always_run || contains_make_ref(recipe_line) {
                     // + prefix or $(MAKE)/${MAKE}: run even under -n
