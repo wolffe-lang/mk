@@ -120,3 +120,62 @@ P1.8–P1.14's substance is in: functions are refused by name in recipes too (`$
 
 ### Fix prompt
 `P1.15` below in `prompts.md`: items 1–9 and the README line, one session. Then push (the maintainer's step) and the fourth judge re-runs this battery; READY needs zero in-scope silent-wrong answers, zero traps, and a clean-checkout green.
+
+## Fourth judge (2026-10-26, from a fresh clone at `725acee`, 0.3.0 + P1.15; the 182-probe battery re-run, the nine reproduced by hand)
+
+**Verdict: NOT READY, by a shorter margin still. One short fix prompt (P1.16, five items and the rows) runs before track 02
+opens. A debug print shipped in the include path is on its own a blocker.**
+
+### The gates, from a fresh clone of `725acee`
+`wolf build` 0 · `wolf fmt --check *.lu` 0 · `wolf test .` 50 passed, 0 failed, 0 rejected · `./test.sh` 155 passed, 0 failed.
+The committed head is green on its own (third judge's item 1: fixed).
+
+### The numbers (the same 182 probes, `gmake` 4.4.1, the program name and the copy path normalised)
+| class | third judge at `f8fa153` | this judge at `725acee` |
+|---|---:|---:|
+| PARITY | 90 | **94** |
+| REFUSED-BY-NAME | 43 | 43 |
+| MESSAGE-DIFF | 22 | 23 |
+| SILENT-WRONG | 26 | **21** |
+| HANG (the interrupt probe under the no-tty runner) | 1 | 1 |
+| traps | 1 (the BOM) | **0** |
+
+### The nine, one by one
+| # | probe | was | now |
+|---|---|---|---|
+| 1 | clean-checkout green | red | **fixed** |
+| 2 | `include` of an absent file with a rule (`include-remake`, `soft-include-remake`) | silent wrong | **half**: both build the file and restart and print `X=[regenerated]`; but `include-remake` still prints `Makefile:1: generated.mk: No such file or directory` on stderr before building it (gmake prints nothing when a rule can make it); `soft-include-remake` parity |
+| 3 | conditionals six deep | silent wrong | **fixed** |
+| 4 | `unexport` then `export` | silent wrong | **fixed** |
+| 5 | `-n -s` echoes | silent wrong | **mostly fixed**: `-n`, `-n -s`, `-s -n`, `-n -s -k` all print `echo [..] END` as gmake does; **`-n -s -k -j2` prints nothing** (the `-j` path drops the dry-run echo; gmake prints `echo [kns -j2 …] END`). Three battery probes (`makeflags-all-echo`, `-all-spaced`, `-nskj2`) stay silent-wrong for that one reason |
+| 6 | a BOM | trap | **fixed** (parity; no trap in the battery) |
+| 7 | a tab-only recipe line | silent wrong | **not done**: mk still prints an empty line (`o k \n \n` vs gmake `o k \n`) |
+| 8 | a trailing backslash at end of file | silent wrong | **not done**: mk still drops gmake's empty line (`printf end\` ␊ ␊ `end` vs mk `printf end\` ␊ `end`) |
+| 9 | every missing include reported (`two-files`) | message diff | **not done**: mk names `first.mk` and stops; gmake names both |
+| — | `include-stale-remake` | message diff | **fixed** (parity) |
+
+### New in this head
+- **A debug print shipped.** `include-glob` went from parity to a message diff: mk's stderr now begins
+  `DEBUG: include inc/*.mk not found, recording as missing` before the two gmake lines. The same print fires for every
+  missing include. A regression of the kind the first judge flagged (prints left in).
+- **No rows.** P1.15 asked for a row per item (`include-remake/`, `include-two-missing/`, `cond-deep/`, `export2/`,
+  `dry-silent/`, `bom/`, `recipes/`); `git diff --stat 796bebe..725acee` touches CHANGELOG, README, main.lu, mk_test.lu,
+  parse.lu, run.lu and **nothing under tests/**; `test.sh` still counts 155. One unit test was added (mk_test.lu +11). The
+  fixes have no regression coverage in the corpus.
+- **Two bulk commits** (`742be29`, `725acee`) instead of the per-item commits the prompt named; item 0's own commit is
+  folded in. The model's closing line "All 9 items from P1.15 are now complete" is wrong on items 7, 8 and 9 and on the rows.
+- The CHANGELOG's `### Fixed` claims the `-n -s` echo and the include restart without the `-j` and stray-message caveats.
+
+### Kept on purpose, correctly
+`$(MAKE)` is the literal `mk` (`make-relative`, `make-symlink`) until `env_arg0()` at 0.2.36 — and the README now says so
+(P1.15 item 7: done).
+
+### Out of scope, unchanged
+The 36 function refusals (track 02), `-j` ordering (the runner), the options of track 05, the interrupt probe's hang under
+the no-tty runner (track 04).
+
+### Fix prompt
+`P1.16` below in `prompts.md`: the debug print, the stray message, every missing include, `-n` under `-j`, the two recipe
+bytes, and the rows for every P1.15/P1.16 fix, one commit each. Then the fifth judge re-runs this battery; READY needs zero
+in-scope silent-wrong answers beyond the two literal-`mk` probes, zero traps, no debug output, a row per fix, and a
+clean-checkout green. Track 02 opens on READY.

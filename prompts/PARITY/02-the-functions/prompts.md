@@ -1,6 +1,6 @@
 # Track 02 — the functions (0.4.0)
 
-Do `prompts/PARITY/campaign.md`'s "Start of every session" first, `01-the-directives/judge.md` (all three judges) included.
+Do `prompts/PARITY/campaign.md`'s "Start of every session" first, `01-the-directives/judge.md` (all four judges) included.
 Where the code stands after track 01: the expander is `expand.lu` — `expand` → `expand_inner(v, s, visiting, line)` scans a
 reference to its balanced close, expands computed names, and when the inside's first word is one of `is_gmake_function`'s
 names (expand.lu:237) returns `Refuse(line, msg)` so every caller prints `functions are not supported` by name and exits 2

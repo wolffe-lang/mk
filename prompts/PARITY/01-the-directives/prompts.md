@@ -419,3 +419,41 @@ expected bytes are there. Order and commits:
 **Verify:** from a *fresh clone* of your pushed head — not the working tree — `wolf build main.lu -o mk && wolf fmt --check
 *.lu && wolf test . && ./test.sh | tail -1`, all green, pasted; then the nine probes from `judge.md` run by hand with gmake
 beside mk, pasted. `git log --oneline | head -12`. Stop for the fourth judge.
+
+### P1.16 — the fourth judge's five, and the rows (a fresh session)
+
+Read `judge.md`'s *Fourth judge* section first. Every item was reproduced from a fresh clone of `725acee` against `gmake`
+4.4.1. **One commit per item, in this order; commit the row red before the fix, then the fix green.** No commit carries
+anything its message does not name.
+
+0. **Remove the debug print.** `DEBUG: include … not found, recording as missing` goes to stderr for every missing include
+   (parse.lu, the P1.15 include path). Delete it; grep the tree for `DEBUG` and `eprintln`/`print` left from P1.15 and remove
+   every one. Commit `include: no debug output`.
+1. **No message when a rule can make the include.** `include generated.mk` with a rule for `generated.mk` must print nothing
+   on stderr (gmake prints nothing): the `No such file or directory` line is printed only after the whole Makefile is read
+   and no rule can make the file. Row `include-remake/` (the `include` and `-include` forms, expected stderr empty, stdout
+   `X=[regenerated]`). Commit `include: report a missing include only when nothing can make it`.
+2. **Every missing include before stopping.** `include first.mk` / `include second.mk`, neither makeable → gmake prints
+   `Makefile:1: first.mk: No such file or directory`, `Makefile:2: second.mk: No such file or directory`, then
+   `mk: *** No rule to make target 'first.mk'.  Stop.`, exit 2. Collect the missing list across the read; print each with
+   its line; stop on the first. Row `include-two-missing/`. Commit `include: name every missing file before stopping`.
+3. **`-n` under `-j` echoes.** `-n -s -k -j2` with `all: ; @echo [$(MAKEFLAGS)] END` → gmake `echo [kns -j2 …] END`; mk
+   prints nothing. The dry run must print the recipe lines on the `-j` path exactly as on the serial path (`MAKEFLAGS`
+   `kns -j2`; gmake's `--jobserver-auth=…` word is not reproduced — leave it out, the judge's battery normalises it). Row
+   `dry-silent/` with `-n -s`, `-n -s -k` and `-n -s -k -j2`. Commit `dry run: -j does not silence -n`.
+4. **The two recipe bytes.** (a) A recipe line that is only a tab is an empty recipe line gmake does not print: `all: ;
+   @echo ok` followed by a tab-only line → stdout exactly `ok\n` (mk prints `ok\n\n`). (b) A trailing backslash at end of
+   file: `all:\n\tprintf end\\\n` → gmake echoes `printf end\`, then an empty line, then `end` (bytes
+   `70 72 69 6e 74 66 20 65 6e 64 5c 0a 0a 65 6e 64`); mk drops the empty line. Rows `recipes/tab-only/` and
+   `recipes/terminal-backslash/` with the bytes pasted from gmake. Commit `recipes: a tab-only line prints nothing; a
+   terminal backslash keeps gmake's empty line`.
+5. **Rows for P1.15's fixes that have none:** `cond-deep/` (eight `ifeq` deep, `deep8`), `export2/` (`export X = original`,
+   `unexport X`, `export X` → `[original]`), `bom/` (the three BOM bytes committed as the fixture's first bytes, stdout `ok`),
+   `include-stale-remake/` if absent. Each row's expected bytes pasted from `gmake`. `test.sh`'s count re-pasted. Commit
+   `rows: cond-deep, export2, bom`.
+6. **CHANGELOG `### Fixed`**: the `-n -s` line gains "and under `-j`", the include line gains "with no message when a rule can
+   make it; every missing include named". Commit `CHANGELOG: P1.16`.
+
+**Verify:** from a *fresh clone* of your committed head — not the working tree — `wolf build main.lu -o mk && wolf fmt --check
+*.lu && wolf test . && ./test.sh | tail -1`, all green, pasted; `grep -rn DEBUG *.lu` empty, pasted; the five probes above run
+by hand with gmake beside mk, pasted; `git log --oneline | head -10` showing one commit per item. Stop for the fifth judge.
