@@ -73,10 +73,14 @@
 ### Fixed
 
 - `include` of an absent file that has a rule now builds it and restarts (like gmake does)
+- `include` of an absent file that has no rule reports the error (no "No such file or directory" when a rule can make it)
+- Every missing include reported before stopping (both files named)
 - Conditionals five or more deep now work (the `endif` was incorrectly popping all entries)
 - `else ifeq` followed by `else` now works correctly
 - `unexport` then `export` re-exports (the last directive wins)
 - `-n` with `-s` still echoes (silent never silences the dry run's echo)
+- `-n` under `-j` echoes (dry run prints recipe lines even with `-j`)
+- Tab-only recipe line prints nothing; trailing backslash at end of file keeps gmake's empty line
 - A BOM (U+FEFF) at the start of a file is skipped
 - README *Known differences* updated to reflect the one real difference (`$(MAKE)` expands to literal `mk`)
 
