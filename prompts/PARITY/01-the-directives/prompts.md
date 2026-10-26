@@ -488,6 +488,13 @@ a row cannot pass, stop and say so — the reviewer decides.
    Verify: `./test.sh | grep -E '^FAIL'` — the four `R fail`/`R prefix`/`R recursion` failures are gone; what fails now is
    only what items 1–5 fix (expected: `include-two-missing`, because mk names both files — paste exactly what fails). Commit
    `test.sh: rows name the row, not a goal; recursion uses the checkout's mk; drop the mk-only I1 row`.
+   **Judge erratum (2026-10-26, after the session):** the restored dispatch takes each rows line's first word as its name, and
+   eight lines began with a flag (they had no name, so their first flag became the name and the row ran without it). They now
+   carry names, arguments unchanged: `bom/rows` `dash-f -f Makefile`; `dry-silent/rows` `ns -n -s`, `nsk -n -s -k`,
+   `nskj -n -s -k -j2`; `include-remake/rows` and `include-two-missing/rows` `dash-f -f Makefile`; `terminal-backslash/rows` and
+   `tab-only/rows` `dry -n`. Committed `tests/corpus: name the eight rows lines that began with a flag (dash-f, ns, nsk, nskj,
+   dry)` after the item's commit. Verified by the reviewer: `./test.sh` 162 passed, 2 failed — `dash-f include-two-missing` and
+   `twice include-two-missing`, both item 1–5 rows.
 
 1. **A goal given twice.** gmake, with `plain:` ␊ `<tab>@echo plain` and `gmake plain plain`: stdout `plain` ␊
    `gmake: 'plain' is up to date.` (that line is on **stdout**), exit 0. mk prints `plain` only. Before writing code, run
