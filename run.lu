@@ -447,6 +447,7 @@ fn discover_targets(
     g: Graph,
     goals: List[str],
     mut dropped: List[str],
+    mut repeated: List[str],
     makelevel: int,
 ) -> List[str] {
     var order = List[str]()
@@ -455,6 +456,9 @@ fn discover_targets(
     // Each name is stored as "\n{name}\n" so that find() matches the whole name.
     var in_progress = "\n"
     for goal in goals {
+        if map.has(visited, goal) {
+            (mut repeated).push(goal)
+        }
         discover_recursive(g, goal, mut order, mut visited, in_progress, mut dropped, makelevel)
     }
     return order
@@ -582,6 +586,10 @@ fn build_goals_serial(
     var built = Map[str, int]()
     var had_error = false
     for goal in goals {
+        if map.has(built, goal) {
+            print("{mk_prefix(makelevel)} '{goal}' is up to date.")
+            continue
+        }
         let result = build_recursive(
             g,
             v,
@@ -627,7 +635,8 @@ fn build_goals_parallel(
 ) -> int {
     // Discover all targets in topological order
     var dropped = List[str]()
-    let order = discover_targets(g, goals, mut dropped, makelevel)
+    var repeated = List[str]()
+    let order = discover_targets(g, goals, mut dropped, mut repeated, makelevel)
     // built: name -> 1 (rebuilt), 0 (present not rebuilt), -1 (cycle-broken/skipped)
     var built = Map[str, int]()
     // Mark cycle-broken targets as done (value -1) so prereqs_done treats them as done
@@ -1095,6 +1104,9 @@ fn build_goals_parallel(
     // Return 2 if any target failed
     if failed.len > 0 {
         return 2
+    }
+    for goal in repeated {
+        print("{mk_prefix(makelevel)} '{goal}' is up to date.")
     }
     return 0
 }
