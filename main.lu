@@ -572,10 +572,6 @@ fn run(mut f: Flags) -> int {
                 continue
             }
             if !inc.found || is_out_of_date(g, inc.path, built) {
-                // Print "No such file or directory" for missing hard includes (gmake does this)
-                if !inc.found && !inc.optional {
-                    eprint("{primary_file}:{inc.line}: {inc.path}: No such file or directory")
-                }
                 // Build this included file
                 let result = build_recursive(
                     g,
