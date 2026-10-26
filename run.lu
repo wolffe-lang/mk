@@ -914,8 +914,8 @@ fn build_goals_parallel(
                     var line = final_line
                     let (stripped, is_silent, _ignore, always_run) = strip_prefixes(line)
                     // Under -n, print the command line with prefixes stripped.
-                    // gmake prints every line under -n, regardless of @.
-                    if !silent {
+                    // gmake prints every line under -n, regardless of @ or -s.
+                    if !silent || dry_run {
                         print(stripped)
                     }
                     if always_run || contains_make_ref(recipe_line) {

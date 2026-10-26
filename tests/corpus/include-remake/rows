@@ -1,1 +1,1 @@
-R include-remake include -f Makefile
+-f Makefile
