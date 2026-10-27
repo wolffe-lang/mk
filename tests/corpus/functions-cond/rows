@@ -1,0 +1,6 @@
+# functions-cond: if, or, and — lazy arguments (gmake 4.4.1)
+if if
+or or
+and and
+lazy lazy
+nested nested
