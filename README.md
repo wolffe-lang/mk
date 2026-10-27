@@ -65,6 +65,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | computed names | `$($(x))` |
 | substitution references | `$(SRC:.c=.o)` |
 | text functions | `$(subst a,b,$(X))` `$(patsubst %.c,%.o,$(SRC))` `$(strip $(X))` `$(findstring a,$(X))` `$(filter %.c,$(SRC))` `$(filter-out %.h,$(SRC))` `$(sort $(X))` `$(word 2,$(X))` `$(wordlist 2,3,$(X))` `$(words $(X))` `$(firstword $(X))` `$(lastword $(X))` |
+| file-name functions | `$(dir $(X))` `$(notdir $(X))` `$(suffix $(X))` `$(basename $(X))` `$(addsuffix .o,$(X))` `$(addprefix src/,$(X))` `$(join $(A),$(B))` `$(wildcard *.c)` `$(realpath $(X))` `$(abspath $(X))` |
 | `include` / `-include` / `sinclude` | `include $(DIR)/x.mk` |
 | `-I DIR` | search DIR for included makefiles |
 | `ifeq` / `ifneq` / `ifdef` / `ifndef` / `else` / `endif` | `ifeq ($(A),$(B))` |
@@ -84,7 +85,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `.SUFFIXES` | `.SUFFIXES is not supported` |
 | `|` order-only prerequisites | `order-only prerequisites are not supported` |
 | `::` double-colon rules | `double-colon rules are not supported` |
-| `$(wildcard …)` / `$(shell …)` / `$(foreach …)` / `$(call …)` / `$(if …)` / `$(eval …)` / `$(error …)` and the other functions not yet listed above | `functions are not supported` |
+| `$(shell …)` / `$(foreach …)` / `$(call …)` / `$(if …)` / `$(eval …)` / `$(error …)` and the other functions not yet listed above | `functions are not supported` |
 
 ## Out-of-date rule
 

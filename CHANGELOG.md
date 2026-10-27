@@ -8,6 +8,9 @@
   `words`, `firstword`, `lastword`, with gmake's argument splitting (commas at depth zero, the last argument keeping the
   rest) and gmake's fatal lines for a bad `word`/`wordlist` count (`FILE:LINE: *** … .  Stop.`, exit 2)
 - A `%` inside a function on an assignment or rule line is no longer taken for a pattern rule
+- The file-name functions: `dir`, `notdir`, `suffix`, `basename`, `addsuffix`, `addprefix`, `join`, `wildcard` (sorted,
+  each match with its pattern's directory prefix; a line with `$(wildcard …)` is no longer refused at read time),
+  `realpath` (a missing file is dropped), `abspath` (the file need not exist)
 
 ### Fixed
 
