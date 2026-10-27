@@ -119,6 +119,12 @@ A prerequisite with no rule that does not exist is an error:
 - `$(MAKE)` expands to the literal `mk` (gmake prints its absolute path); this changes
   when wolf 0.2.36's `env_arg0()` lands
 
+### Divergences from gmake 4.4.1
+
+| construct | divergence |
+|---|---|
+| `$(intcmp -5,-3,…)` | gmake 4.4.1 orders two negatives by magnitude (`gt`); mk orders them as numbers (`lt`), as the manual says (R-mk-1) |
+
 ## Tests
 
 ```
