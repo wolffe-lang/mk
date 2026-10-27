@@ -82,18 +82,33 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 } else
                 // Check if it's a function call (contains whitespace)
                 if is_whitespace(expanded_inside) {
-                    // Check if the first word is a gmake function name
+                    // A function call, or a variable name with spaces
                     let first_word = expanded_inside.words()[0]
-                    if is_gmake_function(first_word) {
-                        return Refuse(line, "functions are not supported")
+                    if is_text_function(first_word) {
+                        let fval = call_function(
+                            v,
+                            first_word,
+                            expanded_inside,
+                            visiting,
+                            line,
+                        ) else |e| match e {
+                            Unterminated(l) => return Unterminated(l),
+                            Cycle(l, n) => return Cycle(l, n),
+                            Refuse(l, msg) => return Refuse(l, msg),
+                        }
+                        result = result + fval
+                    } else {
+                        if is_gmake_function(first_word) {
+                            return Refuse(line, "functions are not supported")
+                        }
+                        // Not a known function; treat as a variable name with spaces
+                        let val = expand_var(v, expanded_inside, visiting) else |e| match e {
+                            Unterminated(l) => return Unterminated(l),
+                            Cycle(l, n) => return Cycle(l, n),
+                            Refuse(l, msg) => return Refuse(l, msg),
+                        }
+                        result = result + val
                     }
-                    // Not a known function; treat as a variable name with spaces
-                    let val = expand_var(v, expanded_inside, visiting) else |e| match e {
-                        Unterminated(l) => return Unterminated(l),
-                        Cycle(l, n) => return Cycle(l, n),
-                        Refuse(l, msg) => return Refuse(l, msg),
-                    }
-                    result = result + val
                 } else {
                     // Simple variable reference
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
@@ -135,18 +150,33 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 } else
                 // Check if it's a function call (contains whitespace)
                 if is_whitespace(expanded_inside) {
-                    // Check if the first word is a gmake function name
+                    // A function call, or a variable name with spaces
                     let first_word = expanded_inside.words()[0]
-                    if is_gmake_function(first_word) {
-                        return Refuse(line, "functions are not supported")
+                    if is_text_function(first_word) {
+                        let fval = call_function(
+                            v,
+                            first_word,
+                            expanded_inside,
+                            visiting,
+                            line,
+                        ) else |e| match e {
+                            Unterminated(l) => return Unterminated(l),
+                            Cycle(l, n) => return Cycle(l, n),
+                            Refuse(l, msg) => return Refuse(l, msg),
+                        }
+                        result = result + fval
+                    } else {
+                        if is_gmake_function(first_word) {
+                            return Refuse(line, "functions are not supported")
+                        }
+                        // Not a known function; treat as a variable name with spaces
+                        let val = expand_var(v, expanded_inside, visiting) else |e| match e {
+                            Unterminated(l) => return Unterminated(l),
+                            Cycle(l, n) => return Cycle(l, n),
+                            Refuse(l, msg) => return Refuse(l, msg),
+                        }
+                        result = result + val
                     }
-                    // Not a known function; treat as a variable name with spaces
-                    let val = expand_var(v, expanded_inside, visiting) else |e| match e {
-                        Unterminated(l) => return Unterminated(l),
-                        Cycle(l, n) => return Cycle(l, n),
-                        Refuse(l, msg) => return Refuse(l, msg),
-                    }
-                    result = result + val
                 } else {
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
                         Unterminated(l) => return Unterminated(l),
@@ -247,16 +277,7 @@ fn is_gmake_function(name: str) -> bool {
     if name == "info" {
         return true
     }
-    if name == "subst" {
-        return true
-    }
     if name == "patsubst" {
-        return true
-    }
-    if name == "strip" {
-        return true
-    }
-    if name == "findstring" {
         return true
     }
     if name == "filter" {
@@ -272,15 +293,6 @@ fn is_gmake_function(name: str) -> bool {
         return true
     }
     if name == "wordlist" {
-        return true
-    }
-    if name == "words" {
-        return true
-    }
-    if name == "firstword" {
-        return true
-    }
-    if name == "lastword" {
         return true
     }
     if name == "dir" {
@@ -525,9 +537,4 @@ fn apply_pattern_sub(s: str, pattern: str, replacement: str) -> str {
         i += 1
     }
     return result
-}
-
-/// Call a function by name. Returns "" for now (P2 will implement this).
-fn call_function(v: Vars, args: str, visiting: str) -> str {
-    return ""
 }

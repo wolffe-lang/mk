@@ -359,3 +359,37 @@ fn test_split_recipe_lines_bare_newlines() {
     assert(lines[1] == "", "empty line")
     assert(lines[2] == "y", "third line")
 }
+
+fn test_split_args_depth_and_max() {
+    let p = split_args("a,$(b,c),d,e", 3)
+    assert(
+        p.len == 3 && p[0] == "a" && p[1] == "$(b,c)" && p[2] == "d,e",
+        "split_args: depth zero, last keeps commas",
+    )
+}
+
+fn test_function_subst() {
+    let v = new_vars()
+    assert(
+        (expand(v, "$(subst ee,EE,feet on the street)", 1) else "") == "fEEt on the strEEt",
+        "subst",
+    )
+}
+
+fn test_function_strip_findstring() {
+    let v = new_vars()
+    assert((expand(v, "[$(strip   a   b  )]", 1) else "") == "[a b]", "strip")
+    assert(
+        (expand(v, "$(findstring a,a b c)|$(findstring z,a b c)", 1) else "") == "a|",
+        "findstring",
+    )
+}
+
+fn test_function_words_first_last() {
+    let v = new_vars()
+    assert((expand(v, "$(words foo bar)", 1) else "") == "2", "words")
+    assert(
+        (expand(v, "$(firstword foo bar baz)$(lastword foo bar baz)", 1) else "") == "foobaz",
+        "firstword, lastword",
+    )
+}
