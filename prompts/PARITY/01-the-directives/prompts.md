@@ -558,3 +558,17 @@ a row cannot pass, stop and say so — the reviewer decides.
 directory under this project, e.g. `git clone -q . .verify && cd .verify && wolf build main.lu -o mk && wolf fmt --check *.lu
 && wolf test . && ./test.sh | tail -1; cd .. && rm -rf .verify` — all green, pasted; the items' probes run by hand with gmake
 beside mk, pasted; `git log --oneline | head -14`. Stop for the sixth judge.
+
+### P1.18 — Release 0.3.1 (the sixth judge said READY; no code changes)
+
+**Read first:** `campaign.md`'s *Start of every session*; `judge.md`'s **Sixth judge** section. Then, in this order, one edit
+each, nothing else:
+
+1. `CHANGELOG.md`: the `## Unreleased` section (it begins at line 21, under `## 0.3.0 (2026-10-24)`) moves **above**
+   `## 0.3.0` and is renamed `## 0.3.1 (2026-10-26)`. Move the block; do not retype it. `sed -n 1,30p CHANGELOG.md` must then
+   show `# Changelog`, a blank line, `## 0.3.1 (2026-10-26)`, its `### Added` / `### Changed` / `### Fixed` subsections, and
+   only then `## 0.3.0 (2026-10-24)`.
+2. `main.lu` line 23: `let VERSION: str = "0.3.1"`. Rebuild: `wolf build main.lu -o mk && ./mk --version` prints `mk 0.3.1`
+   (paste the line). If the README states the version anywhere (`grep -n '0\.3\.0' README.md`), change those lines to `0.3.1`.
+3. Verify and paste: `wolf fmt --check *.lu; wolf test . | tail -1; ./test.sh | tail -1` (172 passed). One commit:
+   `Release 0.3.1`. Stop. Track 02 opens next session with `02-the-functions/prompts.md` P2.1.

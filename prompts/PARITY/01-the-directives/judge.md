@@ -239,3 +239,56 @@ with the judge's exact bytes, a row that reproduces the probe *as the probe is*,
 a fresh clone green, zero in-scope silent-wrong answers beyond the two literal-`mk` probes, `include-stale-remake` and
 `two-files` at parity, the two new differences at parity, no row whose Makefile differs from the judge's probe it names, and one
 commit per item.
+
+## Sixth judge (2026-10-26 evening, from a fresh clone at `22303ff`, 0.3.0 + P1.17; the 182-probe battery re-run, every P1.17 item reproduced by hand)
+
+**Verdict: READY.** Track 01 closes. The fresh clone is green on its own, every in-scope difference the fifth judge named is at
+parity, no row's Makefile differs from the probe it names, and the history shows each item's rows red before its fix. One
+housekeeping session (P1.18, the release) runs before track 02 opens; it changes no code.
+
+### The gates, from a fresh clone of `22303ff` (`~/lanes/mkj6/mk`)
+`wolf build main.lu -o mk` 0, **no warnings** · `wolf fmt --check *.lu` 0 · `wolf test .` 50 passed · `./test.sh` **172 passed,
+0 failed** (46 directories; the reviewer's own run, twice: once in `~/lanes/mkj6`, once in a throwaway clone).
+
+### The numbers (the same 182 probes, `gmake` 4.4.1, `~/lanes/mkj6/battery.py`, `results.json` beside it)
+| class | fifth judge at `b21258e` | this judge at `22303ff` |
+|---|---:|---:|
+| PARITY | 98 | **102** |
+| REFUSED-BY-NAME | 43 | 43 |
+| MESSAGE-DIFF | 22 | **20** |
+| SILENT-WRONG | 18 | **16** |
+| HANG (the no-tty interrupt probe) | 1 | 1 |
+| traps | 0 | 0 |
+
+Moved to parity: `include-stale-remake`, `two-files`, `tab-only`, `terminal-backslash`. Moved away: none. The 16 silent-wrong
+answers left are all out of this track's scope — the `-j` output order (`j-unlimited`, `j100`, `j4-interleaving`; track 05's
+runner), the options (`option-W`, `-o`, `-v`, `-version`, `-help`, `warn-undefined`, `dry-recursive-make`; track 05),
+functions (`define-shell`, `shell-assignment`; track 02), `target-specific` (track 04), `ten-thousand-targets` (track 07) —
+and the two literal-`mk` probes (`make-relative`, `make-symlink`), kept on purpose and now a line under *Known differences
+from GNU make* in the README (the first judge's "README missing difference" is closed).
+
+### P1.17, item by item (each reproduced by hand against `gmake`, the bytes compared)
+| # | item | verdict |
+|---|---|---|
+| 0 | the harness compares against gmake again | **done** (`50a2033`; the rows reader takes the row's name, `recursion/rows` uses `$ROOT`, `I1` gone; the reviewer's erratum committed as `6bb6571`) |
+| 1 | a goal given twice | **parity** on all four forms: `plain plain`, `plain plain plain` (two `is up to date.` lines), `out out` on an existing file (two lines), `all a` (one) — the line on stdout, exit 0. Rows `twice`, `thrice` in `dup-goal/`; red `574837e`, green `bc787c6` |
+| 2 | `-k -j 2 k1` | **parity**: `*** No rule to make target 'k1'.`, exit 2, no "not remade" line. Row `k1-goal`; red `5ce986b`, green `a0110fb`. The lane added `k-recipe -k -j 2 result` (a failed recipe, no "not remade" line either) — gmake agrees, the row passes |
+| 3 | include names the first, `-f` names every one | **parity** on both: `Makefile:1: first.mk: No such file or directory` then the Stop (second.mk unnamed); `-f first.mk -f second.mk` names both with the `mk:` prefix before the Stop. `two-files/Makefile` is the probe's bytes; red `d218d45`, green `7c6d094` |
+| 4 | the include whose rule fails | **parity**: `Makefile:1: generated.mk: No such file or directory` ␊ `*** No rule to make target 'source', needed by 'generated.mk'.  Stop.`, exit 2; `include-remake` still at parity. `include-stale-remake/Makefile` is the probe's bytes; red `b1d709e`, green `96192fa` |
+| 5 | the recipe bytes as the probes are | **parity**: `tab-only/` and `terminal-backslash/` carry the probes' Makefiles byte for byte (sha `6627f619…`, `dc302883…`; the backslash file is 17 bytes ending in `\`), `tab-only-after/` is the mirror; no arguments on any row. gmake and mk both print `ok` ␊ for the two tab files and `printf end\` ␊ ␊ `end` for the backslash. Red `1fa1ba4`, green `b181db2` |
+| 6 | `cond-deep/` guard, CHANGELOG, README | **done**: eight nested `ifeq`, `deep`; `bf122a0`; `22303ff` carries the seven `### Fixed` lines and the README's 172 rows / 46 directories |
+
+Fourteen commits from `50a2033` to `22303ff`, one or two per item, red before green, no trailers. The judge's one
+reservation: `include-two-missing/Makefile` (`include first.mk` ␊ `include second.mk` ␊ ␊ `all:` ␊ `<tab>@echo done`) is the
+P1.16-era fixture, not the exact text P1.17 item 3 quoted (`@echo all`, no blank line); the fifth judge's probe for it was run
+by hand and is not in the battery, the row compares against gmake through `same_as_make`, and the behaviour it tests (only
+the first missing include named) is what the probe tested. Kept.
+
+### Housekeeping (P1.18, no code)
+`CHANGELOG.md` has `## 0.3.0 (2026-10-24)` at the top and the `## Unreleased` section (P1.8–P1.17's lines) **below** it, at
+line 21. Rule 7 wants the open section on top and the track's last prompt to release it. P1.18: move `## Unreleased` above
+`## 0.3.0`, rename it `## 0.3.1 (2026-10-26)`, bump `VERSION` in `main.lu` to `0.3.1`, re-paste the README's version line if
+it has one, commit `Release 0.3.1`. Then track 02 opens at P2.1.
+
+### Pushing
+The reviewer does not push `https://github.com/wolffe-lang/mk`; that is the maintainer's step, after P1.18.
