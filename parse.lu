@@ -201,7 +201,10 @@ fn join_continuations(lines: List[str]) -> List[Line] {
     // If the file ends with a continuation, push what we have
     if current.len > 0 {
         if in_recipe {
-            (mut result).push(Line { text: current, line: current_line })
+            // A recipe whose last line ends in a backslash at end of file continues
+            // onto an empty line, as gmake reads it.
+            let text = if in_continuation { current + "\n" } else { current }
+            (mut result).push(Line { text: text, line: current_line })
         } else {
             let stripped = strip_comment(current)
             (mut result).push(Line { text: stripped, line: current_line })
@@ -768,6 +771,10 @@ fn parse_makefile(
                 let first_newline = line.find("\n") else {
                     // No newline, strip the first tab
                     let recipe_line = line[1..]
+                    if recipe_line.trim().len == 0 {
+                        line_num += 1
+                        continue
+                    }
                     (mut current_rule.recipe).push(recipe_line)
                     // Set first_recipe_line on the first recipe line
                     if current_rule.first_recipe_line == 0 {
@@ -780,6 +787,10 @@ fn parse_makefile(
                 // We want "FIRST\nREST" - strip only the first \t from the first line
                 // line[1..] gives "FIRST\nREST" which is correct
                 let recipe_line = line[1..]
+                if recipe_line.trim().len == 0 {
+                    line_num += 1
+                    continue
+                }
                 (mut current_rule.recipe).push(recipe_line)
                 // Set first_recipe_line on the first recipe line
                 if current_rule.first_recipe_line == 0 {
