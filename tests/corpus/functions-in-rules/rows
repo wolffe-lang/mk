@@ -1,0 +1,2 @@
+# functions-in-rules: a % inside a function on an assignment or rule line is not a pattern rule (gmake 4.4.1)
+all
