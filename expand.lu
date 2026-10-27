@@ -277,18 +277,6 @@ fn is_gmake_function(name: str) -> bool {
     if name == "info" {
         return true
     }
-    if name == "patsubst" {
-        return true
-    }
-    if name == "filter" {
-        return true
-    }
-    if name == "filter-out" {
-        return true
-    }
-    if name == "sort" {
-        return true
-    }
     if name == "word" {
         return true
     }
@@ -517,7 +505,12 @@ fn apply_pattern_sub(s: str, pattern: str, replacement: str) -> str {
             // Check if word starts with prefix and ends with suffix
             if word.starts_with(prefix) && word.ends_with(suffix) {
                 let middle = word[prefix.len..word.len - suffix.len]
-                let replaced = replacement.replace("%", middle)
+                let rp = replacement.find("%") else -1
+                let replaced = if rp < 0 {
+                    replacement
+                } else {
+                    replacement[0..rp] + middle + replacement[rp + 1..]
+                }
                 if i > 0 {
                     result = result + " "
                 }

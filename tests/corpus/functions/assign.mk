@@ -1,4 +1,4 @@
 # functions are not supported
-Y := $(subst a,b,abc)
+Y := $(wildcard *.c)
 all:
 	@echo $(Y)

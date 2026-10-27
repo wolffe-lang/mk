@@ -393,3 +393,28 @@ fn test_function_words_first_last() {
         "firstword, lastword",
     )
 }
+
+fn test_function_patsubst_first_percent() {
+    let v = new_vars()
+    assert(
+        (expand(v, "$(patsubst %.c,%-%.o,a.c b.h)", 1) else "") == "a-%.o b.h",
+        "patsubst: first % only, non-matches pass",
+    )
+    assert(
+        (expand(v, "$(patsubst a,x,a aa b)", 1) else "") == "x aa b",
+        "patsubst: whole-word without %",
+    )
+}
+
+fn test_function_filter_and_out() {
+    let v = new_vars()
+    assert((expand(v, "$(filter a%,abc bca a)", 1) else "") == "abc a", "filter")
+    assert((expand(v, "$(filter-out x,x y x)", 1) else "") == "y", "filter-out")
+    assert((expand(v, "$(filter %,a b)", 1) else "") == "a b", "filter: lone % matches all")
+}
+
+fn test_function_sort() {
+    let v = new_vars()
+    assert((expand(v, "$(sort b a b c)", 1) else "") == "a b c", "sort: bytewise, unique")
+    assert((expand(v, "[$(sort  )]", 1) else "") == "[]", "sort: empty")
+}

@@ -14,6 +14,9 @@ fn is_text_function(name: str) -> bool {
     if name == "words" || name == "firstword" || name == "lastword" {
         return true
     }
+    if name == "patsubst" || name == "filter" || name == "filter-out" || name == "sort" {
+        return true
+    }
     false
 }
 
@@ -132,5 +135,64 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
         }
         return ""
     }
+    if name == "patsubst" {
+        let p = split_args(args, 3)
+        return apply_pattern_sub(arg_at(p, 2), arg_at(p, 0), arg_at(p, 1))
+    }
+    if name == "filter" || name == "filter-out" {
+        let p = split_args(args, 2)
+        return filter_words(split_words(arg_at(p, 0)), split_words(arg_at(p, 1)), name == "filter")
+    }
+    if name == "sort" {
+        return join_words(sort_unique(split_words(args)))
+    }
     Refuse(line, "functions are not supported")
+}
+
+/// One pattern against one word: `%` matches any text (possibly empty);
+/// a pattern without `%` matches the word exactly (gmake's filter rule).
+fn pattern_matches(word: str, pattern: str) -> bool {
+    let pct = pattern.find("%") else -1
+    if pct < 0 {
+        return word == pattern
+    }
+    let prefix = pattern[0..pct]
+    let suffix = pattern[pct + 1..]
+    if word.len < prefix.len + suffix.len {
+        return false
+    }
+    word.starts_with(prefix) && word.ends_with(suffix)
+}
+
+/// The words matching any pattern (keep = true) or matching none (filter-out).
+fn filter_words(patterns: List[str], words: List[str], keep: bool) -> str {
+    var kept = List[str]()
+    for w in words {
+        var hit = false
+        for p in patterns {
+            if pattern_matches(w, p) {
+                hit = true
+            }
+        }
+        if hit == keep {
+            (mut kept).push(w)
+        }
+    }
+    join_words(kept)
+}
+
+/// Sorted bytewise, duplicates removed (gmake's sort).
+fn sort_unique(words: List[str]) -> List[str] {
+    var out = List[str]()
+    for w in words {
+        var i = 0
+        while i < out.len && out[i] < w {
+            i = i + 1
+        }
+        if i < out.len && out[i] == w {
+            continue
+        }
+        (mut out).insert(i, w)
+    }
+    out
 }
