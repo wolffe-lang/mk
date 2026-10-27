@@ -14,3 +14,7 @@ join:
 	@echo [$(join a b,.c .o)] [$(join a b c,.c .o)] [$(join a,b c)] [$(join a b,c)]
 abspath:
 	@echo [$(abspath x/../y)] [$(abspath /a/./b//c/)] [$(abspath )] [$(abspath /)] [$(abspath ../../../../../../../../z)]
+wildcard:
+	@echo [$(wildcard *.c)] [$(wildcard *.c nope *.h)] [$(wildcard ./*.c)] [$(wildcard x/*)] [$(wildcard x)]
+realpath:
+	@echo [$(realpath nope)] [$(realpath nope a.c)]

@@ -7,3 +7,5 @@ addsuffix addsuffix
 addprefix addprefix
 join join
 abspath abspath
+wildcard wildcard
+realpath realpath
