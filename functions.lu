@@ -490,7 +490,9 @@ fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int)
 }
 
 /// An `intcmp` argument: an optional sign and decimal digits (whitespace
-/// trimmed), or gmake's fatal line naming the argument as written.
+/// trimmed), or gmake's fatal line naming the argument as written. The value
+/// is signed; two negatives order as numbers do (R-mk-1: gmake 4.4.1 orders
+/// them by magnitude, a documented divergence).
 fn int_arg(text: str, which: str, line: int) -> int ! {Refuse(int, str)} {
     let t = text.trim()
     if t.len == 0 {
@@ -512,5 +514,9 @@ fn int_arg(text: str, which: str, line: int) -> int ! {Refuse(int, str)} {
         j = j + 1
     }
     let n = t[i..].to_int() else 0
-    n
+    if t[0..1] == "-" {
+        0 - n
+    } else {
+        n
+    }
 }

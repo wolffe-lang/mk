@@ -519,7 +519,11 @@ fn test_function_intcmp() {
         (expand(v, "$(intcmp 3,2,lt,eq)", 1) else "") == "eq",
         "intcmp: greater falls to the fourth",
     )
-    assert((expand(v, "$(intcmp -5,-3,lt,eq,gt)", 1) else "") == "gt", "intcmp: signs")
+    assert(
+        (expand(v, "$(intcmp -5,-3,lt,eq,gt)", 1) else "") == "lt",
+        "intcmp: two negatives order as numbers (R-mk-1)",
+    )
+    assert((expand(v, "$(intcmp -1,1,lt,eq,gt)", 1) else "") == "lt", "intcmp: mixed signs")
     assert(
         (expand(v, "$(intcmp 1,2,a,b,c,d)", 1) else "") == "a",
         "intcmp: extra arguments ignored",

@@ -13,4 +13,4 @@ nested:
 intcmp:
 	@echo [$(intcmp 1,2)] [$(intcmp 2,2)] [$(intcmp 3,2)] [$(intcmp 1,2,lt)] [$(intcmp 2,2,lt)] [$(intcmp 2,2,lt,eq)] [$(intcmp 3,2,lt,eq)]
 intcmp5:
-	@echo [$(intcmp 1,2,lt,eq,gt)] [$(intcmp 2,2,lt,eq,gt)] [$(intcmp 3,2,lt,eq,gt)] [$(intcmp -5,-3,lt,eq,gt)] [$(intcmp 1,2,a,b,c,d)]
+	@echo [$(intcmp 1,2,lt,eq,gt)] [$(intcmp 2,2,lt,eq,gt)] [$(intcmp 3,2,lt,eq,gt)] [$(intcmp -1,1,lt,eq,gt)] [$(intcmp 3,-5,lt,eq,gt)] [$(intcmp -5,3,lt,eq,gt)] [$(intcmp 1,2,a,b,c,d)]
