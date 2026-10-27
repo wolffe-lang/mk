@@ -1,0 +1,4 @@
+# functions-call: foreach and call (gmake 4.4.1)
+foreach foreach
+call call
+callzero callzero

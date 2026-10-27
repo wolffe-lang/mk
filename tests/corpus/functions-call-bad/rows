@@ -1,0 +1,2 @@
+# functions-call-bad: foreach refuses two arguments the way gmake 4.4.1 does (exit 2)
+foreach-two -f foreach-two.mk
