@@ -1,0 +1,2 @@
+# two-files: every missing -f file is named before the No rule line (gmake 4.4.1)
+both -f first.mk -f second.mk
