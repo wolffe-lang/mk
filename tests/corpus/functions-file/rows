@@ -1,0 +1,5 @@
+# functions-file: the file-name functions, one target each (gmake 4.4.1)
+dir dir
+notdir notdir
+suffix suffix
+basename basename
