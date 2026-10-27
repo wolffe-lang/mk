@@ -60,6 +60,23 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                     return Unterminated(line)
                 }
                 let inside = rest[0..found]
+                let lazy = lazy_function_name(inside)
+                if lazy.len > 0 {
+                    let lval = call_lazy_function(
+                        v,
+                        lazy,
+                        inside,
+                        visiting,
+                        line,
+                    ) else |e| match e {
+                        Unterminated(l) => return Unterminated(l),
+                        Cycle(l, n) => return Cycle(l, n),
+                        Refuse(l, msg) => return Refuse(l, msg),
+                    }
+                    result = result + lval
+                    i = i + 2 + found + 1
+                    continue
+                }
                 // Expand the inside first (computed names)
                 let expanded_inside = expand_inner(v, inside, visiting, line) else |e| match e {
                     Unterminated(l) => return Unterminated(l),
@@ -128,6 +145,23 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                     return Unterminated(line)
                 }
                 let inside = rest[0..found]
+                let lazy = lazy_function_name(inside)
+                if lazy.len > 0 {
+                    let lval = call_lazy_function(
+                        v,
+                        lazy,
+                        inside,
+                        visiting,
+                        line,
+                    ) else |e| match e {
+                        Unterminated(l) => return Unterminated(l),
+                        Cycle(l, n) => return Cycle(l, n),
+                        Refuse(l, msg) => return Refuse(l, msg),
+                    }
+                    result = result + lval
+                    i = i + 2 + found + 1
+                    continue
+                }
                 // Expand the inside first (computed names)
                 let expanded_inside = expand_inner(v, inside, visiting, line) else |e| match e {
                     Unterminated(l) => return Unterminated(l),
@@ -281,15 +315,6 @@ fn is_gmake_function(name: str) -> bool {
         return true
     }
     if name == "wordlist" {
-        return true
-    }
-    if name == "if" {
-        return true
-    }
-    if name == "or" {
-        return true
-    }
-    if name == "and" {
         return true
     }
     if name == "intcmp" {

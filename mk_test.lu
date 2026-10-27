@@ -481,3 +481,32 @@ fn test_function_wildcard_realpath_missing() {
         "realpath: a missing file is dropped",
     )
 }
+
+fn test_function_if_or_and() {
+    let v = new_vars()
+    set_var(mut v, "X", "x", "=", 1)
+    set_var(mut v, "E", "", "=", 1)
+    assert((expand(v, "$(if $(X),yes,no)", 1) else "") == "yes", "if: taken")
+    assert((expand(v, "$(if $(E),yes,no)", 1) else "") == "no", "if: not taken")
+    assert((expand(v, "[$(if $(E),yes)]", 1) else "") == "[]", "if: no else part")
+    assert((expand(v, "$(if  $(X) ,a,b)", 1) else "") == "a", "if: the condition is stripped")
+    assert((expand(v, "$(or $(E),two,three)", 1) else "") == "two", "or: first non-empty")
+    assert((expand(v, "$(and $(X),two,three)", 1) else "") == "three", "and: the last")
+    assert((expand(v, "[$(and $(X),$(E),three)]", 1) else "") == "[]", "and: an empty one")
+}
+
+fn test_function_lazy_branch_never_expanded() {
+    let v = new_vars()
+    assert(
+        (expand(v, "$(if ,$(error never),lazy)", 1) else "REFUSED") == "lazy",
+        "if: the untaken branch is not expanded",
+    )
+    assert(
+        (expand(v, "$(or yes,$(error never))", 1) else "REFUSED") == "yes",
+        "or: stops at the first non-empty",
+    )
+    assert(
+        (expand(v, "[$(and ,$(error never))]", 1) else "REFUSED") == "[]",
+        "and: stops at the first empty",
+    )
+}

@@ -9,6 +9,24 @@
 use std.env
 use std.fs
 
+/// The functions whose arguments are expanded only when needed (P2.3):
+/// the raw inside's first word, when it is one of them and whitespace
+/// follows; "" otherwise.
+fn lazy_function_name(inside: str) -> str {
+    var i = 0
+    while i < inside.len && inside[i..i + 1] != " " && inside[i..i + 1] != "\t" {
+        i = i + 1
+    }
+    if i == inside.len {
+        return ""
+    }
+    let name = inside[0..i]
+    if name == "if" || name == "or" || name == "and" {
+        return name
+    }
+    ""
+}
+
 /// The text functions implemented so far (P2.1b).
 fn is_text_function(name: str) -> bool {
     if name == "subst" || name == "strip" || name == "findstring" {
@@ -408,4 +426,39 @@ fn wildcard_words(patterns: List[str]) -> List[str] {
         }
     }
     out
+}
+
+/// `if`, `or`, `and` over the RAW argument text: `if` expands its
+/// condition (non-empty after whitespace is stripped) and then only the
+/// chosen branch; `or` expands its arguments in order and answers the
+/// first non-empty one; `and` answers the last if none is empty, else "".
+fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> str ! {
+    Unterminated(int),
+    Cycle(int, str),
+    Refuse(int, str),
+} {
+    let args = function_args(inside)
+    if name == "if" {
+        let p = split_args(args, 3)
+        let cond = expand_inner(v, arg_at(p, 0), visiting, line)?
+        let branch = if join_words(split_words(cond)).len > 0 then arg_at(p, 1) else arg_at(p, 2)
+        return expand_inner(v, branch, visiting, line)?
+    }
+    let p = split_args(args, 64)
+    var last = ""
+    for piece in p {
+        let value = expand_inner(v, piece, visiting, line)?
+        if name == "or" {
+            if value.len > 0 {
+                return value
+            }
+        } else if value.len == 0 {
+            return ""
+        }
+        last = value
+    }
+    if name == "or" {
+        return ""
+    }
+    last
 }
