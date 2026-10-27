@@ -1,0 +1,2 @@
+# include-stale-remake: a missing include whose remake fails is named first (gmake 4.4.1)
+stale
