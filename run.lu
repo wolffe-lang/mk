@@ -706,10 +706,6 @@ fn build_goals_parallel(
                     }
                     return 2
                 }
-                // If this is a goal, track it for the "not remade" message
-                if map.has(goal_set, flight.name) {
-                    (mut failed_goals).push(flight.name)
-                }
             }
             done += 1
             continue
@@ -759,10 +755,6 @@ fn build_goals_parallel(
                         process.kill(mut f.child) else |_| {}
                     }
                     return 2
-                }
-                // If this is a goal, track it for the "not remade" message
-                if map.has(goal_set, flight.name) {
-                    (mut failed_goals).push(flight.name)
                 }
             }
             done += 1
@@ -832,10 +824,6 @@ fn build_goals_parallel(
                     }
                     return 2
                 }
-                // If this is a goal, track it for the "not remade" message
-                if map.has(goal_set, name) {
-                    (mut failed_goals).push(name)
-                }
                 continue
             }
             var prereq_failed = false
@@ -846,6 +834,7 @@ fn build_goals_parallel(
                 }
             }
             if prereq_failed {
+                if map.has(goal_set, name) { (mut failed_goals).push(name) }
                 map.set(mut failed, name, 1)
                 map.set(mut started, name, 1)
                 done += 1
@@ -855,10 +844,6 @@ fn build_goals_parallel(
                         process.kill(mut f.child) else |_| {}
                     }
                     return 2
-                }
-                // If this is a goal, track it for the "not remade" message
-                if map.has(goal_set, name) {
-                    (mut failed_goals).push(name)
                 }
                 continue
             }
