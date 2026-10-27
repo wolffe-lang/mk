@@ -317,9 +317,6 @@ fn is_gmake_function(name: str) -> bool {
     if name == "wordlist" {
         return true
     }
-    if name == "intcmp" {
-        return true
-    }
     if name == "foreach" {
         return true
     }

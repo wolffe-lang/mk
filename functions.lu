@@ -21,7 +21,7 @@ fn lazy_function_name(inside: str) -> str {
         return ""
     }
     let name = inside[0..i]
-    if name == "if" || name == "or" || name == "and" {
+    if name == "if" || name == "or" || name == "and" || name == "intcmp" {
         return name
     }
     ""
@@ -444,6 +444,32 @@ fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int)
         let branch = if join_words(split_words(cond)).len > 0 then arg_at(p, 1) else arg_at(p, 2)
         return expand_inner(v, branch, visiting, line)?
     }
+    if name == "intcmp" {
+        let p = split_args(args, 5)
+        if p.len < 2 {
+            return Refuse(
+                line,
+                "*** insufficient number of arguments ({p.len}) to function 'intcmp'",
+            )
+        }
+        let lhs_text = expand_inner(v, arg_at(p, 0), visiting, line)?
+        let rhs_text = expand_inner(v, arg_at(p, 1), visiting, line)?
+        let lhs = int_arg(lhs_text, "first", line)?
+        let rhs = int_arg(rhs_text, "second", line)?
+        if p.len == 2 {
+            return if lhs == rhs then lhs_text.trim() else ""
+        }
+        let part = if lhs < rhs {
+            arg_at(p, 2)
+        } else if p.len == 3 {
+            ""
+        } else if lhs == rhs || p.len == 4 {
+            arg_at(p, 3)
+        } else {
+            arg_at(p, 4)
+        }
+        return expand_inner(v, part, visiting, line)?
+    }
     let p = split_args(args, 64)
     var last = ""
     for piece in p {
@@ -461,4 +487,30 @@ fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int)
         return ""
     }
     last
+}
+
+/// An `intcmp` argument: an optional sign and decimal digits (whitespace
+/// trimmed), or gmake's fatal line naming the argument as written.
+fn int_arg(text: str, which: str, line: int) -> int ! {Refuse(int, str)} {
+    let t = text.trim()
+    if t.len == 0 {
+        return Refuse(line, "*** non-numeric {which} argument to 'intcmp' function: empty value")
+    }
+    var i = 0
+    if t[0..1] == "-" || t[0..1] == "+" {
+        i = 1
+    }
+    if i == t.len {
+        return Refuse(line, "*** non-numeric {which} argument to 'intcmp' function: '{t}'")
+    }
+    var j = i
+    while j < t.len {
+        let c = t[j..j + 1]
+        if c < "0" || c > "9" {
+            return Refuse(line, "*** non-numeric {which} argument to 'intcmp' function: '{t}'")
+        }
+        j = j + 1
+    }
+    let n = t[i..].to_int() else 0
+    n
 }

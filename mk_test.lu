@@ -510,3 +510,22 @@ fn test_function_lazy_branch_never_expanded() {
         "and: stops at the first empty",
     )
 }
+
+fn test_function_intcmp() {
+    let v = new_vars()
+    assert((expand(v, "[$(intcmp 1,2)]", 1) else "") == "[]", "intcmp: two arguments, unequal")
+    assert((expand(v, "$(intcmp 2,2)", 1) else "") == "2", "intcmp: two arguments, equal")
+    assert(
+        (expand(v, "$(intcmp 3,2,lt,eq)", 1) else "") == "eq",
+        "intcmp: greater falls to the fourth",
+    )
+    assert((expand(v, "$(intcmp -5,-3,lt,eq,gt)", 1) else "") == "gt", "intcmp: signs")
+    assert(
+        (expand(v, "$(intcmp 1,2,a,b,c,d)", 1) else "") == "a",
+        "intcmp: extra arguments ignored",
+    )
+    assert(
+        (expand(v, "$(intcmp a,1)", 1) else "REFUSED") == "REFUSED",
+        "intcmp: non-numeric refuses",
+    )
+}
