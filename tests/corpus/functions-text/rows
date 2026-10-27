@@ -1,0 +1,13 @@
+# functions-text: the twelve text functions, one target each (gmake 4.4.1)
+subst subst
+patsubst patsubst
+strip strip
+findstring findstring
+filter filter
+filter-out filter-out
+sort sort
+word word
+wordlist wordlist
+words words
+firstword firstword
+lastword lastword

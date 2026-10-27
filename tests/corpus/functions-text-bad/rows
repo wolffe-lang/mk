@@ -1,0 +1,7 @@
+# functions-text-bad: word and wordlist refuse a bad count the way gmake 4.4.1 does (exit 2)
+word-x -f word-x.mk
+word-0 -f word-0.mk
+word-empty -f word-empty.mk
+wordlist-x -f wordlist-x.mk
+wordlist-0 -f wordlist-0.mk
+wordlist-y -f wordlist-y.mk
