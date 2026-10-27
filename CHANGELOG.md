@@ -1,24 +1,6 @@
 # Changelog
 
-## 0.3.0 (2026-10-24)
-
-### Added
-
-- Special variables: `MAKE` (the program name), `CURDIR` (the working directory
-  after `-C`), `MAKEFILE_LIST` (already present), `MAKEFLAGS` (the flags given,
-  in gmake's spelling: `k`, `n`, `s`, and `-jN`), `MAKELEVEL` (`0`),
-  `.DEFAULT_GOAL` (the first target in the file)
-- `tests/corpus/special/` — exercises the special variables
-- The test harness normalizes `gmake`/`mk` to `MAKE` and strips gmake's
-  `--jobserver-auth=…` from `MAKEFLAGS` so the comparison is fair
-
-### Changed
-
-- `main.lu` sets the special variables after parsing the CLI flags
-- `test.sh` normalizes the MAKE word and strips the jobserver auth in `normalize`
-- `test.sh` replaces temp directory paths in file contents for `same_as_make`
-
-## Unreleased
+## 0.3.1 (2026-10-26)
 
 ### Added
 
@@ -88,6 +70,24 @@
 - Tab-only recipe line prints nothing; trailing backslash at end of file keeps gmake's empty line
 - A BOM (U+FEFF) at the start of a file is skipped
 - README *Known differences* updated to reflect the one real difference (`$(MAKE)` expands to literal `mk`)
+
+## 0.3.0 (2026-10-24)
+
+### Added
+
+- Special variables: `MAKE` (the program name), `CURDIR` (the working directory
+  after `-C`), `MAKEFILE_LIST` (already present), `MAKEFLAGS` (the flags given,
+  in gmake's spelling: `k`, `n`, `s`, and `-jN`), `MAKELEVEL` (`0`),
+  `.DEFAULT_GOAL` (the first target in the file)
+- `tests/corpus/special/` — exercises the special variables
+- The test harness normalizes `gmake`/`mk` to `MAKE` and strips gmake's
+  `--jobserver-auth=…` from `MAKEFLAGS` so the comparison is fair
+
+### Changed
+
+- `main.lu` sets the special variables after parsing the CLI flags
+- `test.sh` normalizes the MAKE word and strips the jobserver auth in `normalize`
+- `test.sh` replaces temp directory paths in file contents for `same_as_make`
 
 ## 0.2.1 (2026-10-23)
 
