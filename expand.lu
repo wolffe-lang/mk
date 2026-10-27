@@ -498,7 +498,7 @@ fn apply_pattern_sub(s: str, pattern: str, replacement: str) -> str {
     while i < words.len {
         let word = words[i]
         // Find % in pattern
-        let pct_pos = pattern.find("%") else 0
+        let pct_pos = pattern.find("%") else -1
         if pct_pos >= 0 {
             let prefix = pattern[0..pct_pos]
             let suffix = pattern[pct_pos + 1..]
@@ -525,7 +525,7 @@ fn apply_pattern_sub(s: str, pattern: str, replacement: str) -> str {
             if i > 0 {
                 result = result + " "
             }
-            result = result + word
+            result = result + (if word == pattern then replacement else word)
         }
         i += 1
     }

@@ -967,7 +967,7 @@ fn parse_makefile(
                         return parse
                     },
                     Refuse(l, msg) => {
-                        eprint("mk: {file}:{l}: {msg}")
+                        eprint(refusal_text("mk: ", file, l, msg))
                         return parse
                     },
                 }
@@ -1280,7 +1280,7 @@ fn parse_makefile(
                             return parse
                         },
                         Refuse(l, msg) => {
-                            eprint("mk: {file}:{l}: {msg}")
+                            eprint(refusal_text("mk: ", file, l, msg))
                             return parse
                         },
                     }
@@ -1630,7 +1630,7 @@ fn print_database(db: Database, v: Vars, makefile: str) -> !int {
                     return 2
                 },
                 Refuse(l, msg) => {
-                    eprint("mk: {makefile}:{l}: {msg}")
+                    eprint(refusal_text("mk: ", makefile, l, msg))
                     return 2
                 },
             }

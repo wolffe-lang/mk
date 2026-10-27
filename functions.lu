@@ -14,7 +14,12 @@ fn is_text_function(name: str) -> bool {
     if name == "words" || name == "firstword" || name == "lastword" {
         return true
     }
-    if name == "patsubst" || name == "filter" || name == "filter-out" || name == "sort" {
+    if name == "patsubst" ||
+        name == "filter" ||
+        name == "filter-out" ||
+        name == "sort" ||
+        name == "word" ||
+        name == "wordlist" {
         return true
     }
     false
@@ -146,6 +151,34 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
     if name == "sort" {
         return join_words(sort_unique(split_words(args)))
     }
+    if name == "word" {
+        let p = split_args(args, 2)
+        let n = word_index(arg_at(p, 0), "word", "first", line) else |e| match e {
+            Refuse(l, m) => return Refuse(l, m),
+        }
+        let ws = split_words(arg_at(p, 1))
+        if n <= ws.len {
+            return ws[n - 1]
+        }
+        return ""
+    }
+    if name == "wordlist" {
+        let p = split_args(args, 3)
+        let s = word_index(arg_at(p, 0), "wordlist", "first", line) else |e| match e {
+            Refuse(l, m) => return Refuse(l, m),
+        }
+        let e2 = word_index(arg_at(p, 1), "wordlist", "second", line) else |e| match e {
+            Refuse(l, m) => return Refuse(l, m),
+        }
+        let ws = split_words(arg_at(p, 2))
+        var out = List[str]()
+        var k = s
+        while k <= e2 && k <= ws.len {
+            (mut out).push(ws[k - 1])
+            k = k + 1
+        }
+        return join_words(out)
+    }
     Refuse(line, "functions are not supported")
 }
 
@@ -195,4 +228,39 @@ fn sort_unique(words: List[str]) -> List[str] {
         (mut out).insert(i, w)
     }
     out
+}
+
+/// A refusal whose message starts with "*** " is a gmake fatal line:
+/// `FILE:LINE: *** MESSAGE.  Stop.` with no `mk:` prefix. Every other
+/// refusal keeps mk's own shape, `PREFIXFILE:LINE: MESSAGE`.
+fn refusal_text(prefix: str, file: str, line: int, msg: str) -> str {
+    if msg.starts_with("*** ") {
+        return "{file}:{line}: {msg}.  Stop."
+    }
+    "{prefix}{file}:{line}: {msg}"
+}
+
+/// A word index argument: the digits of `text` (whitespace trimmed) as a
+/// number, or gmake's fatal message naming the argument as written.
+fn word_index(text: str, fname: str, which: str, line: int) -> int ! {Refuse(int, str)} {
+    let t = text.trim()
+    if t.len == 0 {
+        return Refuse(line, "*** invalid {which} argument to '{fname}' function: empty value")
+    }
+    var i = 0
+    while i < t.len {
+        let c = t[i..i + 1]
+        if c < "0" || c > "9" {
+            return Refuse(line, "*** invalid {which} argument to '{fname}' function: '{text}'")
+        }
+        i = i + 1
+    }
+    let n = t.to_int() else 0
+    if n == 0 && fname == "word" {
+        return Refuse(line, "*** first argument to 'word' function must be greater than 0")
+    }
+    if n == 0 {
+        return Refuse(line, "*** invalid {which} argument to '{fname}' function: '{text}'")
+    }
+    n
 }

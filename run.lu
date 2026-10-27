@@ -172,7 +172,7 @@ fn build_target(
                 }
             },
             Refuse(l, msg) => {
-                eprint("{mk_prefix(makelevel)}{makefile}:{l}: {msg}")
+                eprint(refusal_text(mk_prefix(makelevel), makefile, l, msg))
                 return BuildResult {
                     name: name,
                     success: false,
@@ -352,7 +352,7 @@ fn build_recursive(
                         }
                     },
                     Refuse(l, msg) => {
-                        eprint("{mk_prefix(makelevel)}{makefile}:{l}: {msg}")
+                        eprint(refusal_text(mk_prefix(makelevel), makefile, l, msg))
                         return BuildResult {
                             name: name,
                             success: false,
@@ -899,7 +899,7 @@ fn build_goals_parallel(
                             return 2
                         },
                         Refuse(l, msg) => {
-                            eprint("{mk_prefix(makelevel)}{makefile}:{l}: {msg}")
+                            eprint(refusal_text(mk_prefix(makelevel), makefile, l, msg))
                             return 2
                         },
                     }
@@ -974,7 +974,7 @@ fn build_goals_parallel(
                         return 2
                     },
                     Refuse(l, msg) => {
-                        eprint("{mk_prefix(makelevel)}{makefile}:{l}: {msg}")
+                        eprint(refusal_text(mk_prefix(makelevel), makefile, l, msg))
                         return 2
                     },
                 }

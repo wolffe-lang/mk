@@ -348,7 +348,7 @@ fn parse_and_build(
             return parse
         },
         Refuse(l, msg) => {
-            eprint("mk: {primary_file}:{l}: {msg}")
+            eprint(refusal_text("mk: ", primary_file, l, msg))
             return parse
         },
     }

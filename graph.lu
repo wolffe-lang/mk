@@ -243,7 +243,7 @@ fn build_graph(db: Database, v: Vars, makefile: str) -> Graph ! {
                     return Cycle(l, n)
                 },
                 Refuse(l, msg) => {
-                    eprint("mk: {makefile}:{l}: {msg}")
+                    eprint(refusal_text("mk: ", makefile, l, msg))
                     return Unterminated(l)
                 },
             }
@@ -263,7 +263,7 @@ fn build_graph(db: Database, v: Vars, makefile: str) -> Graph ! {
                         return Cycle(l, n)
                     },
                     Refuse(l, msg) => {
-                        eprint("mk: {makefile}:{l}: {msg}")
+                        eprint(refusal_text("mk: ", makefile, l, msg))
                         return Unterminated(l)
                     },
                 }
