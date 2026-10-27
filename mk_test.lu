@@ -533,3 +533,28 @@ fn test_function_intcmp() {
         "intcmp: non-numeric refuses",
     )
 }
+
+fn test_function_foreach_and_call() {
+    let v = new_vars()
+    set_var(mut v, "reverse", "$(2) $(1)", "=", 1)
+    set_var(mut v, "i", "outer", "=", 1)
+    assert((expand(v, "$(foreach i,a b,$(i).o)", 1) else "") == "a.o b.o", "foreach: each word")
+    assert((expand(v, "[$(foreach i,,x)]", 1) else "") == "[]", "foreach: empty list")
+    assert(
+        (expand(v, "$(foreach i,a,$(i))$(i)", 1) else "") == "aouter",
+        "foreach: the outer binding is untouched",
+    )
+    assert((expand(v, "$(call reverse,a,b)", 1) else "") == "b a", "call: $(1) and $(2)")
+    assert(
+        (expand(v, "[$(call nosuch,a)]", 1) else "") == "[]",
+        "call: an undefined function is empty",
+    )
+    assert(
+        (expand(v, "[$(call reverse)]", 1) else "") == "[ ]",
+        "call: missing arguments are empty",
+    )
+    assert(
+        (expand(v, "$(foreach i,a)", 1) else "REFUSED") == "REFUSED",
+        "foreach: two arguments refuse",
+    )
+}

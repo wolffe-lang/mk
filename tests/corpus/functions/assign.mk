@@ -1,4 +1,4 @@
 # functions are not supported
-Y := $(foreach v,a b,$(v).c)
+Y := $(error X)
 all:
 	@echo $(Y)

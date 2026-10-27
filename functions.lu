@@ -21,7 +21,12 @@ fn lazy_function_name(inside: str) -> str {
         return ""
     }
     let name = inside[0..i]
-    if name == "if" || name == "or" || name == "and" || name == "intcmp" {
+    if name == "if" ||
+        name == "or" ||
+        name == "and" ||
+        name == "intcmp" ||
+        name == "foreach" ||
+        name == "call" {
         return name
     }
     ""
@@ -443,6 +448,42 @@ fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int)
         let cond = expand_inner(v, arg_at(p, 0), visiting, line)?
         let branch = if join_words(split_words(cond)).len > 0 then arg_at(p, 1) else arg_at(p, 2)
         return expand_inner(v, branch, visiting, line)?
+    }
+    if name == "foreach" {
+        let p = split_args(args, 3)
+        if p.len < 3 {
+            return Refuse(
+                line,
+                "*** insufficient number of arguments ({p.len}) to function 'foreach'",
+            )
+        }
+        let var_name = expand_inner(v, arg_at(p, 0), visiting, line)?
+        let list = expand_inner(v, arg_at(p, 1), visiting, line)?
+        var out = ""
+        var w = copy v
+        for word in split_words(list) {
+            set_var(mut w, var_name, word, ":=", line)
+            let piece = expand_inner(w, arg_at(p, 2), visiting, line)?
+            out = if out.len == 0 then piece else out + " " + piece
+        }
+        return out
+    }
+    if name == "call" {
+        let p = split_args(args, 64)
+        let fn_name = expand_inner(v, arg_at(p, 0), visiting, line)?
+        if fn_name.len == 0 {
+            return ""
+        }
+        let fn_body = var_value(v, fn_name)
+        var w = copy v
+        set_var(mut w, "0", fn_name, ":=", line)
+        var i = 1
+        while i < p.len {
+            let value = expand_inner(v, arg_at(p, i), visiting, line)?
+            set_var(mut w, "{i}", value, ":=", line)
+            i = i + 1
+        }
+        return expand_inner(w, fn_body, visiting, line)?
     }
     if name == "intcmp" {
         let p = split_args(args, 5)

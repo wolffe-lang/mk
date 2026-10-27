@@ -317,13 +317,7 @@ fn is_gmake_function(name: str) -> bool {
     if name == "wordlist" {
         return true
     }
-    if name == "foreach" {
-        return true
-    }
     if name == "file" {
-        return true
-    }
-    if name == "call" {
         return true
     }
     if name == "value" {
