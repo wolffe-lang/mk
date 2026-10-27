@@ -234,8 +234,8 @@ fn strip_comment(line: str) -> str {
 /// Check if a line is a refusal (pattern rule, include, ifeq, etc.).
 /// Returns the refusal kind, or empty string if it's allowed.
 fn check_refusal(line: str) -> str {
-    // Pattern rules: contain % in the target
-    if line.contains("%") {
+    // Pattern rules: a % among the target names, outside any $(…) or ${…}
+    if percent_in_targets(line) {
         return "pattern rules are not supported"
     }
     // .SUFFIXES
@@ -256,7 +256,7 @@ fn check_refusal(line: str) -> str {
         return "double-colon rules are not supported"
     }
     // Functions: $(wildcard ...), $(patsubst ...), $(shell ...)
-    if line.contains("$(wildcard") || line.contains("$(patsubst") || line.contains("$(shell") {
+    if line.contains("$(wildcard") || line.contains("$(shell") {
         return "functions are not supported"
     }
     return ""
@@ -401,16 +401,16 @@ fn parse_rule(line: str, line_num: int) -> Rule ! {none} {
     let targets_str = line[0..colon_pos].trim()
     let prereqs_str = line[colon_pos + 1..].trim()
 
-    // Parse targets (space-separated)
-    let targets = targets_str.words()
+    // Parse targets (space-separated, respecting $(…) boundaries)
+    let targets = split_on_whitespace(targets_str)
     if targets.len == 0 {
         return none
     }
 
-    // Parse prerequisites (space-separated)
+    // Parse prerequisites (space-separated, respecting $(…) boundaries)
     var prereqs = List[str]()
     if prereqs_str.len > 0 {
-        prereqs = prereqs_str.words()
+        prereqs = split_on_whitespace(prereqs_str)
     }
 
     return Rule {
@@ -1657,4 +1657,82 @@ fn print_database(db: Database, v: Vars, makefile: str) -> !int {
         print(".PHONY: {names}")
     }
     return 0
+}
+
+/// True when a `%` stands among a rule line's target names: before the
+/// first `:` at reference depth zero, and itself at depth zero (a `%`
+/// inside `$(…)` or `${…}` belongs to a function, not a pattern rule).
+fn percent_in_targets(line: str) -> bool {
+    var depth = 0
+    var i = 0
+    while i < line.len {
+        let rest = line[i..]
+        if rest.starts_with("${{") {
+            depth = depth + 1
+            i = i + 2
+            continue
+        }
+        if rest.starts_with("(") {
+            depth = depth + 1
+            i = i + 1
+            continue
+        }
+        if rest.starts_with(")") {
+            if depth > 0 {
+                depth = depth - 1
+            }
+            i = i + 1
+            continue
+        }
+        if rest.starts_with(":") && depth == 0 {
+            return false
+        }
+        if rest.starts_with("%") && depth == 0 {
+            return true
+        }
+        i = i + 1
+    }
+    false
+}
+
+/// Split on whitespace at depth zero: a space or tab at depth zero is a
+/// separator; inside `$(…)` or `${…}` whitespace is part of the word.
+fn split_on_whitespace(line: str) -> List[str] {
+    var result = List[str]()
+    var start = 0
+    var depth = 0
+    var i = 0
+    while i < line.len {
+        let rest = line[i..]
+        if rest.starts_with("${{") {
+            depth = depth + 1
+            i = i + 2
+            continue
+        }
+        if rest.starts_with("(") {
+            depth = depth + 1
+            i = i + 1
+            continue
+        }
+        if rest.starts_with(")") {
+            if depth > 0 {
+                depth = depth - 1
+            }
+            i = i + 1
+            continue
+        }
+        if (rest.starts_with(" ") || rest.starts_with("\t")) && depth == 0 {
+            if i > start {
+                (mut result).push(line[start..i])
+            }
+            start = i + 1
+            i = i + 1
+            continue
+        }
+        i = i + 1
+    }
+    if start < line.len {
+        (mut result).push(line[start..])
+    }
+    result
 }

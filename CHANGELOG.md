@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The text functions: `subst`, `patsubst`, `strip`, `findstring`, `filter`, `filter-out`, `sort`, `word`, `wordlist`,
+  `words`, `firstword`, `lastword`, with gmake's argument splitting (commas at depth zero, the last argument keeping the
+  rest) and gmake's fatal lines for a bad `word`/`wordlist` count (`FILE:LINE: *** … .  Stop.`, exit 2)
+- A `%` inside a function on an assignment or rule line is no longer taken for a pattern rule
+
+### Fixed
+
+- A pattern without `%` in `patsubst` and substitution references matches a whole word
+
 ## 0.3.1 (2026-10-26)
 
 ### Added
