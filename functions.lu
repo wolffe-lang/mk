@@ -14,6 +14,9 @@ fn is_text_function(name: str) -> bool {
     if name == "words" || name == "firstword" || name == "lastword" {
         return true
     }
+    if name == "dir" || name == "notdir" || name == "suffix" || name == "basename" {
+        return true
+    }
     if name == "patsubst" ||
         name == "filter" ||
         name == "filter-out" ||
@@ -179,6 +182,9 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
         }
         return join_words(out)
     }
+    if name == "dir" || name == "notdir" || name == "suffix" || name == "basename" {
+        return file_name_function(name, words)
+    }
     Refuse(line, "functions are not supported")
 }
 
@@ -263,4 +269,33 @@ fn word_index(text: str, fname: str, which: str, line: int) -> int ! {Refuse(int
         return Refuse(line, "*** invalid {which} argument to '{fname}' function: '{text}'")
     }
     n
+}
+
+/// The file-name functions, one word at a time (gmake's rules): `dir` is
+/// everything through the last slash (`./` when there is none); `notdir`
+/// is what follows the last slash (an empty piece stays, so gmake prints
+/// `[ b]` for `$(notdir src/ b)`); `suffix` is the last `.`-suffix of the
+/// last component and a word without one is dropped; `basename` is the
+/// word without that suffix.
+fn file_name_function(name: str, words: List[str]) -> str {
+    var out = List[str]()
+    for w in words {
+        let slash = w.rfind("/") else -1
+        let last = if slash >= 0 then w[slash + 1..] else w
+        let dot = last.rfind(".") else -1
+        if name == "dir" {
+            (mut out).push(if slash >= 0 then w[0..slash + 1] else "./")
+        } else if name == "notdir" {
+            (mut out).push(last)
+        } else if name == "suffix" {
+            if dot >= 0 {
+                (mut out).push(last[dot..])
+            }
+        } else if dot >= 0 {
+            (mut out).push(w[0..w.len - (last.len - dot)])
+        } else {
+            (mut out).push(w)
+        }
+    }
+    join_words(out)
 }

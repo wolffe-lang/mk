@@ -283,18 +283,6 @@ fn is_gmake_function(name: str) -> bool {
     if name == "wordlist" {
         return true
     }
-    if name == "dir" {
-        return true
-    }
-    if name == "notdir" {
-        return true
-    }
-    if name == "suffix" {
-        return true
-    }
-    if name == "basename" {
-        return true
-    }
     if name == "addsuffix" {
         return true
     }

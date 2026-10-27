@@ -418,3 +418,33 @@ fn test_function_sort() {
     assert((expand(v, "$(sort b a b c)", 1) else "") == "a b c", "sort: bytewise, unique")
     assert((expand(v, "[$(sort  )]", 1) else "") == "[]", "sort: empty")
 }
+
+fn test_function_dir_notdir() {
+    let v = new_vars()
+    assert((expand(v, "$(dir src/foo.c hacks)", 1) else "") == "src/ ./", "dir")
+    assert((expand(v, "$(dir /foo)", 1) else "") == "/", "dir: root")
+    assert((expand(v, "$(notdir src/foo.c hacks)", 1) else "") == "foo.c hacks", "notdir")
+    assert((expand(v, "[$(notdir src/ b)]", 1) else "") == "[ b]", "notdir: an empty piece stays")
+}
+
+fn test_function_suffix_basename() {
+    let v = new_vars()
+    assert(
+        (expand(v, "$(suffix src/foo.c src-1.0/bar.c hacks)", 1) else "") == ".c .c",
+        "suffix drops a word without one",
+    )
+    assert((expand(v, "$(suffix .c a.)", 1) else "") == ".c .", "suffix: dot first, dot last")
+    assert(
+        (expand(v, "$(basename src/foo.c src-1.0/bar hacks)", 1) else "") ==
+            "src/foo src-1.0/bar hacks",
+        "basename",
+    )
+    assert(
+        (expand(v, "$(basename a.b/c d)", 1) else "") == "a.b/c d",
+        "basename: a dot in the directory is not a suffix",
+    )
+    assert(
+        (expand(v, "[$(basename .c a. b)]", 1) else "") == "[ a b]",
+        "basename: an empty piece stays",
+    )
+}
