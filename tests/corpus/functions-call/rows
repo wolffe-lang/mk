@@ -2,3 +2,6 @@
 foreach foreach
 call call
 callzero callzero
+value value
+origin origin CMDV=c
+flavor flavor CMDV=c
