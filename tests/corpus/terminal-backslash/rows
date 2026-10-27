@@ -1,1 +1,2 @@
-dry -n
+# terminal-backslash: a final backslash with no newline keeps gmake's empty line (gmake 4.4.1)
+plain

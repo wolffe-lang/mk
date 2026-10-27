@@ -1,3 +1,3 @@
 all:
-	@echo ok
 	
+	@echo ok

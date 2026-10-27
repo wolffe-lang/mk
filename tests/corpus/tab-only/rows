@@ -1,1 +1,2 @@
-dry -n
+# tab-only: a recipe line that is only a tab prints nothing (gmake 4.4.1)
+plain
