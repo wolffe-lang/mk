@@ -1,0 +1,3 @@
+# divergences: rows where mk follows the manual and gmake 4.4.1 does not (R-mk-1); each row names mk's answer
+# expected: [lt] [gt]
+intcmp-negatives -f intcmp-negatives.mk

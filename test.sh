@@ -36,7 +36,7 @@ fi
 
 # Collect all unique directory names from the matrix
 ALL_DIRS="$STANDARD"
-for dir in fail missing cycle wide diamond refuse functions vars; do
+for dir in fail missing cycle wide diamond refuse functions vars divergences; do
     ALL_DIRS="$ALL_DIRS $dir"
 done
 # Deduplicate
@@ -89,8 +89,13 @@ for rows in "$CORPUS_DIR"/*/rows; do
                 ;;
             '#'*) continue ;;
         esac
-        MATRIX="$MATRIX
+        if [ "$d" = "divergences" ]; then
+            MATRIX="$MATRIX
+D $d $line"
+        else
+            MATRIX="$MATRIX
 R $d $local_env $line"
+        fi
     done < "$rows"
 done
 MATRIX="$MATRIX
@@ -151,6 +156,7 @@ run_test() {
         J1) test_j1 "$copy" "$dir" ;;
         J2) test_j2 "$copy" "$dir" ;;
         R1) test_r1 "$copy" "$dir" ;;
+        D1) test_d1 "$copy" "$dir" ;;
         P1) test_p1 "$copy" "$dir" ;;
         RJ) test_rj "$copy" "$dir" ;;
         E1) test_e1 "$copy" "$dir" ;;
@@ -400,6 +406,44 @@ test_r1() {
     fi
 }
 
+# D1: a divergence row runs mk and compares its stdout to the # expected: line
+# of the corpus's rows file. gmake is NOT compared — these are known divergences.
+test_d1() {
+    local copy="$1" dir="$2"
+    local rows_file="$CORPUS_DIR/$dir/rows"
+    if [ ! -f "$rows_file" ]; then
+        echo "FAIL: D1 $dir (rows file missing)"
+        FAIL=$((FAIL + 1))
+        return
+    fi
+    local expected=""
+    while IFS= read -r line; do
+        case "$line" in
+            '# expected:'*)
+                expected="${line#\# expected: }"
+                break
+                ;;
+        esac
+    done < "$rows_file"
+    if [ -z "$expected" ]; then
+        echo "FAIL: D1 $dir (no # expected: line)"
+        FAIL=$((FAIL + 1))
+        return
+    fi
+    local mk_out=""
+    for mkfile in "$copy"/*.mk; do
+        local name=$(basename "$mkfile" .mk)
+        mk_out=$("$MK" -f "$mkfile" 2>/dev/null) || true
+        if [ "$mk_out" = "$expected" ]; then
+            echo "ok D1 $dir/$name"
+            PASS=$((PASS + 1))
+        else
+            echo "FAIL: D1 $dir/$name (expected: $expected, got: $mk_out)"
+            FAIL=$((FAIL + 1))
+        fi
+    done
+}
+
 # RJ: every refused construct answers the same under -j 2: mk -j 2 -f X.mk prints what
 # mk -f X.mk prints, and both exit 2
 test_rj() {
@@ -542,6 +586,7 @@ echo "$MATRIX" > "$MATRIX_FILE"
 while read -r row dir args; do
     case "$row" in
         R) set -- $args; same_as_make "$1" "$dir" "${@:2}" ;;
+        D) run_test "D1" "$dir" ;;
         *) run_test "$row" "$dir" ;;
     esac
 done < "$MATRIX_FILE"
