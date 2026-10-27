@@ -3,3 +3,7 @@ dir dir
 notdir notdir
 suffix suffix
 basename basename
+addsuffix addsuffix
+addprefix addprefix
+join join
+abspath abspath
