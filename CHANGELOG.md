@@ -74,7 +74,12 @@
 
 - `include` of an absent file that has a rule now builds it and restarts (like gmake does)
 - `include` of an absent file that has no rule reports the error (no "No such file or directory" when a rule can make it)
-- Every missing include reported before stopping (both files named)
+- A goal given twice (`make plain plain`) prints `mk: 'plain' is up to date.` for the repeat, serial and `-j`
+- `-k -j N`: no "not remade because of errors" line for a goal with no rule or a failed recipe; only a failed prerequisite earns it, as gmake
+- `include` names only the first missing file; `-f` names every missing file before stopping
+- A missing include whose rule cannot succeed is named before the "No rule" line (the `include-stale-remake` probe)
+- A recipe line that is only a tab runs nothing; a final backslash with no newline keeps gmake's empty line
+- `cond-deep`: eight nested `ifeq` as a guard row
 - Conditionals five or more deep now work (the `endif` was incorrectly popping all entries)
 - `else ifeq` followed by `else` now works correctly
 - `unexport` then `export` re-exports (the last directive wins)

@@ -121,7 +121,7 @@ A prerequisite with no rule that does not exist is an error:
 ```
 wolf build main.lu -o mk
 wolf test .              # 50 unit tests
-./test.sh                # 155 corpus rows against GNU make
+./test.sh                # 172 corpus rows against GNU make
 wolf fmt --check *.lu
 ```
 
@@ -134,7 +134,7 @@ name, the rest are the arguments). A name starting with `again` compares the sec
 of each tool. A copy is cleaned to the directory's git-tracked files. The harness finds
 every `tests/corpus/*/rows` and feeds them into the matrix.
 
-The 123 rows cover 15 directories across 19 test kinds: N1 (dry-run output), B1 (files
+The 172 rows cover 46 directories across 19 test kinds: N1 (dry-run output), B1 (files
 after build), B2 (second run), B3 (build from a subset), F1 (failure with `-k`), M1
 (missing target), C1 (cycle), J1 (wide build), J2 (diamond with `-j`), R1 (refusals),
 P1 (print database), J3 (parallel), U1/U2 (second-run comparison), D1 (dry-run with
@@ -160,7 +160,7 @@ Machine: Apple M5 Pro, macOS, wolf 0.2.34. Date: 2026-10-23.
 | `graph.lu` | Dependency graph, DFS, cycle detection, out-of-date decision |
 | `run.lu` | Scheduler: serial and parallel execution, `-n`/`-s`/`-k` |
 | `mk_test.lu` | Unit tests for the parser and variable flavours |
-| `test.sh` | Corpus tests against GNU make (100 rows) |
+| `test.sh` | Corpus tests against GNU make (172 rows) |
 | `SPEC.md` | The original specification (the prompt that built this) |
 | `CHANGELOG.md` | Version history |
 | `README.md` | this file |
