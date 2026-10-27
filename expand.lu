@@ -283,22 +283,10 @@ fn is_gmake_function(name: str) -> bool {
     if name == "wordlist" {
         return true
     }
-    if name == "addsuffix" {
-        return true
-    }
-    if name == "addprefix" {
-        return true
-    }
-    if name == "join" {
-        return true
-    }
     if name == "wildcard" {
         return true
     }
     if name == "realpath" {
-        return true
-    }
-    if name == "abspath" {
         return true
     }
     if name == "if" {

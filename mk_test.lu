@@ -448,3 +448,24 @@ fn test_function_suffix_basename() {
         "basename: an empty piece stays",
     )
 }
+
+fn test_function_affix_and_join() {
+    let v = new_vars()
+    assert((expand(v, "$(addsuffix .c,foo bar)", 1) else "") == "foo.c bar.c", "addsuffix")
+    assert((expand(v, "$(addprefix src/,foo bar)", 1) else "") == "src/foo src/bar", "addprefix")
+    assert((expand(v, "$(join a b,.c .o)", 1) else "") == "a.c b.o", "join")
+    assert(
+        (expand(v, "$(join a b,c)", 1) else "") == "ac b",
+        "join: the longer tail passes through",
+    )
+}
+
+fn test_function_abspath_absolute() {
+    let v = new_vars()
+    assert(
+        (expand(v, "$(abspath /a/./b//c/)", 1) else "") == "/a/b/c",
+        "abspath: dots, doubled and trailing slashes",
+    )
+    assert((expand(v, "$(abspath /)", 1) else "") == "/", "abspath: the root")
+    assert((expand(v, "$(abspath /../../z)", 1) else "") == "/z", "abspath: .. clamps at the root")
+}

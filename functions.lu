@@ -6,6 +6,8 @@
 //! pieces: the last piece keeps any further commas (gmake's rule for
 //! fixed-arity functions).
 
+use std.env
+
 /// The text functions implemented so far (P2.1b).
 fn is_text_function(name: str) -> bool {
     if name == "subst" || name == "strip" || name == "findstring" {
@@ -15,6 +17,9 @@ fn is_text_function(name: str) -> bool {
         return true
     }
     if name == "dir" || name == "notdir" || name == "suffix" || name == "basename" {
+        return true
+    }
+    if name == "addsuffix" || name == "addprefix" || name == "join" || name == "abspath" {
         return true
     }
     if name == "patsubst" ||
@@ -185,6 +190,22 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
     if name == "dir" || name == "notdir" || name == "suffix" || name == "basename" {
         return file_name_function(name, words)
     }
+    if name == "addsuffix" || name == "addprefix" {
+        let p = split_args(args, 2)
+        return affix_words(name == "addsuffix", arg_at(p, 0), split_words(arg_at(p, 1)))
+    }
+    if name == "join" {
+        let p = split_args(args, 2)
+        return join_pairs(split_words(arg_at(p, 0)), split_words(arg_at(p, 1)))
+    }
+    if name == "abspath" {
+        let cwd = env.cwd() else ""
+        var out = List[str]()
+        for w in words {
+            (mut out).push(absolute_path(cwd, w))
+        }
+        return join_words(out)
+    }
     Refuse(line, "functions are not supported")
 }
 
@@ -298,4 +319,56 @@ fn file_name_function(name: str, words: List[str]) -> str {
         }
     }
     join_words(out)
+}
+
+/// `addsuffix`/`addprefix`: the affix on each word.
+fn affix_words(suffix: bool, affix: str, words: List[str]) -> str {
+    var out = List[str]()
+    for w in words {
+        (mut out).push(if suffix then w + affix else affix + w)
+    }
+    join_words(out)
+}
+
+/// `join`: the words of both lists concatenated pairwise; the longer
+/// list's tail passes through (`$(join a b,c)` is `ac b`).
+fn join_pairs(a: List[str], b: List[str]) -> str {
+    var out = List[str]()
+    var i = 0
+    while i < a.len || i < b.len {
+        let x = if i < a.len then a[i] else ""
+        let y = if i < b.len then b[i] else ""
+        (mut out).push(x + y)
+        i = i + 1
+    }
+    join_words(out)
+}
+
+/// `abspath`: the word made absolute against the current directory, `.`
+/// and empty components dropped, `..` taken (clamped at the root), no
+/// trailing slash; the file need not exist (gmake's rule).
+fn absolute_path(cwd: str, w: str) -> str {
+    let full = if w.starts_with("/") then w else cwd + "/" + w
+    var parts = List[str]()
+    for piece in full.split("/") {
+        if piece == "" || piece == "." {
+            continue
+        }
+        if piece == ".." {
+            if parts.len > 0 {
+                let n = parts.len - 1
+                (mut parts).truncate(n)
+            }
+            continue
+        }
+        (mut parts).push(piece)
+    }
+    if parts.len == 0 {
+        return "/"
+    }
+    var s = ""
+    for p in parts {
+        s = s + "/" + p
+    }
+    s
 }
