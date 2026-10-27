@@ -11,6 +11,8 @@
 - The file-name functions: `dir`, `notdir`, `suffix`, `basename`, `addsuffix`, `addprefix`, `join`, `wildcard` (sorted,
   each match with its pattern's directory prefix; a line with `$(wildcard …)` is no longer refused at read time),
   `realpath` (a missing file is dropped), `abspath` (the file need not exist)
+- The conditional functions `if`, `or`, `and` and `intcmp`, expanding only the branch they choose (an `$(error …)` in
+  the other branch never fires), with gmake's fatal lines for a non-numeric or missing `intcmp` argument
 
 ### Fixed
 
