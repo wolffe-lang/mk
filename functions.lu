@@ -7,6 +7,7 @@
 //! fixed-arity functions).
 
 use std.env
+use std.fs
 
 /// The text functions implemented so far (P2.1b).
 fn is_text_function(name: str) -> bool {
@@ -20,6 +21,9 @@ fn is_text_function(name: str) -> bool {
         return true
     }
     if name == "addsuffix" || name == "addprefix" || name == "join" || name == "abspath" {
+        return true
+    }
+    if name == "wildcard" || name == "realpath" {
         return true
     }
     if name == "patsubst" ||
@@ -198,6 +202,19 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
         let p = split_args(args, 2)
         return join_pairs(split_words(arg_at(p, 0)), split_words(arg_at(p, 1)))
     }
+    if name == "wildcard" {
+        return join_words(wildcard_words(words))
+    }
+    if name == "realpath" {
+        let cwd = env.cwd() else ""
+        var out = List[str]()
+        for w in words {
+            if fs.exists(w) {
+                (mut out).push(absolute_path(cwd, w))
+            }
+        }
+        return join_words(out)
+    }
     if name == "abspath" {
         let cwd = env.cwd() else ""
         var out = List[str]()
@@ -371,4 +388,24 @@ fn absolute_path(cwd: str, w: str) -> str {
         s = s + "/" + p
     }
     s
+}
+
+/// `wildcard`: each pattern's matches in sorted order, each written with
+/// the pattern's own directory prefix (`./*.c` gives `./a.c`, `*.c` gives
+/// `a.c`); a pattern without `*` or `?` is kept only if it exists.
+fn wildcard_words(patterns: List[str]) -> List[str] {
+    var out = List[str]()
+    for pat in patterns {
+        let slash = pat.rfind("/") else -1
+        let prefix = if slash >= 0 then pat[0..slash + 1] else ""
+        if pat.contains("*") || pat.contains("?") {
+            for m in glob(pat) {
+                let cut = m.rfind("/") else -1
+                (mut out).push(prefix + m[cut + 1..])
+            }
+        } else if fs.exists(pat) {
+            (mut out).push(pat)
+        }
+    }
+    out
 }

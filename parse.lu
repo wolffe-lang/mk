@@ -255,8 +255,8 @@ fn check_refusal(line: str) -> str {
     if line.contains("::") {
         return "double-colon rules are not supported"
     }
-    // Functions: $(wildcard ...), $(patsubst ...), $(shell ...)
-    if line.contains("$(wildcard") || line.contains("$(shell") {
+    // Functions: $(shell ...)
+    if line.contains("$(shell") {
         return "functions are not supported"
     }
     return ""

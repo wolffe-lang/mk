@@ -111,7 +111,7 @@ fn test_check_refusal_double_colon() {
 }
 
 fn test_check_refusal_wildcard() {
-    assert(check_refusal("SRCS = $(wildcard *.c)").len > 0, "wildcard refused")
+    assert(check_refusal("SRCS = $(wildcard *.c)").len == 0, "wildcard is read, not refused")
 }
 
 fn test_check_refusal_allowed() {
@@ -468,4 +468,16 @@ fn test_function_abspath_absolute() {
     )
     assert((expand(v, "$(abspath /)", 1) else "") == "/", "abspath: the root")
     assert((expand(v, "$(abspath /../../z)", 1) else "") == "/z", "abspath: .. clamps at the root")
+}
+
+fn test_function_wildcard_realpath_missing() {
+    let v = new_vars()
+    assert(
+        (expand(v, "[$(wildcard nope-*.zz nope)]", 1) else "") == "[]",
+        "wildcard: nothing matches, nothing exists",
+    )
+    assert(
+        (expand(v, "[$(realpath nope)]", 1) else "") == "[]",
+        "realpath: a missing file is dropped",
+    )
 }
