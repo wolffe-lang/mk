@@ -1,4 +1,4 @@
 # functions are not supported
-Y := $(wildcard *.c)
+Y := $(foreach v,a b,$(v).c)
 all:
 	@echo $(Y)

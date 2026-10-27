@@ -1,5 +1,5 @@
 # functions are not supported
-SRCS = $(wildcard *.c)
+SRCS = $(shell ls)
 
 all:
 	echo "done"
