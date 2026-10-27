@@ -480,6 +480,22 @@ fn run(mut f: Flags) -> int {
     var restarted = false
     // The MAKELEVEL for this invocation (used for the [N] prefix)
     let my_level = makelevel
+    // Every -f file is named before stopping, as gmake does
+    if f.files.len > 0 {
+        var first_missing = ""
+        for file in files {
+            if !fs.exists(file) {
+                eprint("{mk_prefix(my_level)} {file}: No such file or directory")
+                if first_missing.len == 0 {
+                    first_missing = file
+                }
+            }
+        }
+        if first_missing.len > 0 {
+            eprint("{mk_prefix(my_level)} *** No rule to make target '{first_missing}'.  Stop.")
+            return 2
+        }
+    }
     if f.print_db {
         let (db, _) = parse_and_build(
             files,
@@ -627,7 +643,7 @@ fn run(mut f: Flags) -> int {
     }
     // Report missing includes that have no rule to build them
     // (after the restart, so the graph is final)
-    // Report EVERY missing include before stopping, as gmake does
+    // Report only the FIRST missing include, as gmake does
     var has_missing_hard = false
     for inc in db.included_files {
         if inc.found {
@@ -643,6 +659,7 @@ fn run(mut f: Flags) -> int {
             // Hard include: error
             has_missing_hard = true
             eprint("{primary_file}:{inc.line}: {inc.path}: No such file or directory")
+            break
         }
         // Soft include: silent
     }
