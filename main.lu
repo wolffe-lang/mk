@@ -588,7 +588,10 @@ fn run(mut f: Flags) -> int {
                 continue
             }
             if !inc.found || is_out_of_date(g, inc.path, built) {
-                // Build this included file
+                // A missing include whose remake cannot succeed is named first, as gmake does
+                if !inc.found && !inc.optional && remake_blocked(g, inc.path, 0) {
+                    eprint("{primary_file}:{inc.line}: {inc.path}: No such file or directory")
+                }
                 let result = build_recursive(
                     g,
                     v,
@@ -839,4 +842,21 @@ fn main() -> !int {
         print("{mk_prefix(level)} Leaving directory '{abs_dir}'")
     }
     return status
+}
+
+/// Whether remaking `name` must fail before any recipe runs: a prerequisite at
+/// any depth that is neither a file on disk nor a target with a rule.
+fn remake_blocked(g: Graph, name: str, depth: int) -> bool {
+    if depth > 64 {
+        return false
+    }
+    let node = map.get(g.nodes, name) else {
+        return !fs.exists(name)
+    }
+    for p in node.prereqs {
+        if remake_blocked(g, p, depth + 1) {
+            return true
+        }
+    }
+    return false
 }
