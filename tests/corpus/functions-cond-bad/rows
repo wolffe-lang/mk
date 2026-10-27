@@ -1,0 +1,4 @@
+# functions-cond-bad: intcmp refuses a bad argument the way gmake 4.4.1 does (exit 2)
+intcmp-x -f intcmp-x.mk
+intcmp-one -f intcmp-one.mk
+intcmp-empty -f intcmp-empty.mk
