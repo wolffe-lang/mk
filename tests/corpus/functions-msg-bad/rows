@@ -1,0 +1,4 @@
+# functions-msg-bad: error at read time, in a recipe (before any line runs), and in a taken branch (exit 2)
+read -f read.mk
+recipe -f recipe.mk
+eager -f eager.mk

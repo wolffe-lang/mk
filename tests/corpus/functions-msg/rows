@@ -1,0 +1,6 @@
+# functions-msg: info, warning, MAKECMDGOALS, and the laziness of if (gmake 4.4.1)
+info info
+warn warn
+goals goals
+goals2 goals info
+lazy lazy
