@@ -67,6 +67,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | text functions | `$(subst a,b,$(X))` `$(patsubst %.c,%.o,$(SRC))` `$(strip $(X))` `$(findstring a,$(X))` `$(filter %.c,$(SRC))` `$(filter-out %.h,$(SRC))` `$(sort $(X))` `$(word 2,$(X))` `$(wordlist 2,3,$(X))` `$(words $(X))` `$(firstword $(X))` `$(lastword $(X))` |
 | file-name functions | `$(dir $(X))` `$(notdir $(X))` `$(suffix $(X))` `$(basename $(X))` `$(addsuffix .o,$(X))` `$(addprefix src/,$(X))` `$(join $(A),$(B))` `$(wildcard *.c)` `$(realpath $(X))` `$(abspath $(X))` |
 | conditional functions | `$(if $(C),yes,no)` `$(or $(A),$(B))` `$(and $(A),$(B))` `$(intcmp $(A),$(B),lt,eq,gt)` — only the chosen branch is expanded |
+| `foreach`, `call`, `value`, `origin`, `flavor` | `$(foreach i,$(LIST),$(i).o)` `$(call fn,a,b)` (`$(1)`, `$(2)`, `$(0)` bound for the call) `$(value V)` (the unexpanded text) `$(origin V)` (`undefined`, `default`, `environment`, `environment override`, `file`, `command line`, `override`, `automatic`) `$(flavor V)` (`undefined`, `recursive`, `simple`) |
 | `include` / `-include` / `sinclude` | `include $(DIR)/x.mk` |
 | `-I DIR` | search DIR for included makefiles |
 | `ifeq` / `ifneq` / `ifdef` / `ifndef` / `else` / `endif` | `ifeq ($(A),$(B))` |
@@ -86,7 +87,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `.SUFFIXES` | `.SUFFIXES is not supported` |
 | `|` order-only prerequisites | `order-only prerequisites are not supported` |
 | `::` double-colon rules | `double-colon rules are not supported` |
-| `$(shell …)` / `$(foreach …)` / `$(call …)` / `$(eval …)` / `$(error …)` and the other functions not yet listed above | `functions are not supported` |
+| `$(shell …)` / `$(eval …)` / `$(error …)` and the other functions not yet listed above | `functions are not supported` |
 
 ## Out-of-date rule
 

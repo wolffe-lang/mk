@@ -14,6 +14,7 @@
 - The conditional functions `if`, `or`, `and` and `intcmp`, expanding only the branch they choose (an `$(error …)` in
   the other branch never fires), with gmake's fatal lines for a non-numeric or missing `intcmp` argument
 - `intcmp` orders negatives as numbers; gmake 4.4.1's both-negative answer is recorded as a divergence (README)
+- `foreach`, `call` (bound in a copy of the table, so nesting restores nothing), `value`, `origin`, `flavor`
 
 ### Fixed
 
