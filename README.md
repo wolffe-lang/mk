@@ -68,6 +68,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | file-name functions | `$(dir $(X))` `$(notdir $(X))` `$(suffix $(X))` `$(basename $(X))` `$(addsuffix .o,$(X))` `$(addprefix src/,$(X))` `$(join $(A),$(B))` `$(wildcard *.c)` `$(realpath $(X))` `$(abspath $(X))` |
 | conditional functions | `$(if $(C),yes,no)` `$(or $(A),$(B))` `$(and $(A),$(B))` `$(intcmp $(A),$(B),lt,eq,gt)` — only the chosen branch is expanded |
 | `foreach`, `call`, `value`, `origin`, `flavor` | `$(foreach i,$(LIST),$(i).o)` `$(call fn,a,b)` (`$(1)`, `$(2)`, `$(0)` bound for the call) `$(value V)` (the unexpanded text) `$(origin V)` (`undefined`, `default`, `environment`, `environment override`, `file`, `command line`, `override`, `automatic`) `$(flavor V)` (`undefined`, `recursive`, `simple`) |
+| `info`, `warning`, `error`, `MAKECMDGOALS` | `$(info text)` (stdout, expands to nothing) `$(warning text)` (`FILE:LINE: text` on stderr) `$(error text)` (`FILE:LINE: *** text.  Stop.`, exit 2; a recipe's lines are all expanded before the first runs, as gmake does) `$(MAKECMDGOALS)` (the command-line goals) |
 | `include` / `-include` / `sinclude` | `include $(DIR)/x.mk` |
 | `-I DIR` | search DIR for included makefiles |
 | `ifeq` / `ifneq` / `ifdef` / `ifndef` / `else` / `endif` | `ifeq ($(A),$(B))` |
@@ -87,7 +88,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `.SUFFIXES` | `.SUFFIXES is not supported` |
 | `|` order-only prerequisites | `order-only prerequisites are not supported` |
 | `::` double-colon rules | `double-colon rules are not supported` |
-| `$(shell …)` / `$(eval …)` / `$(error …)` and the other functions not yet listed above | `functions are not supported` |
+| `$(shell …)` / `$(eval …)` / `$(file …)` and the other functions not yet listed above | `functions are not supported` |
 
 ## Out-of-date rule
 
