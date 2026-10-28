@@ -1,0 +1,10 @@
+# functions-open-bad: an unclosed $( or ${, by := != = a recipe and a top-level call (gmake 4.4.1, exit 2)
+simple -f simple.mk
+recursive -f recursive.mk
+recipe -f recipe.mk
+toplevel -f toplevel.mk
+varref -f varref.mk
+brace -f brace.mk
+nested -f nested.mk
+bang -f bang.mk
+foreach -f foreach.mk
