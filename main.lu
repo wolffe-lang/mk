@@ -444,6 +444,8 @@ fn run(mut f: Flags) -> int {
     }
     // MAKEFILE_LIST: the list of files read (space-separated)
     set_var(mut v, "MAKEFILE_LIST", str.join(" ", files), "=", 0)
+    // MAKECMDGOALS: the goals given on the command line, space-joined (empty when none)
+    set_var(mut v, "MAKECMDGOALS", str.join(" ", f.goals), "=", 0)
     // Use the first file as the primary makefile name for error messages
     let primary_file = files[0]
     // MAKEFLAGS: the single-letter flags given, in gmake's spelling

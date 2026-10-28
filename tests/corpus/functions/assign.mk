@@ -1,4 +1,4 @@
 # functions are not supported
-Y := $(error X)
+Y := $(eval X)
 all:
 	@echo $(Y)

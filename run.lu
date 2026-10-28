@@ -146,6 +146,9 @@ fn build_target(
     let newer = newer_prereqs(g, name, built)
     let newer_deduped = dedup(newer)
     let newer_prereqs_str = str.join(" ", newer_deduped)
+    // gmake expands every line of a recipe before it runs the first one, so an
+    // $(error …) on line 3 fires before line 1's command runs.
+    var expanded_lines = List[str]()
     var i = 0
     while i < node.recipe.len {
         let recipe_line = node.recipe[i]
@@ -188,6 +191,13 @@ fn build_target(
             },
         }
         let final_line = expand_auto(expanded, name, first_prereq, all_prereqs, newer_prereqs_str)
+        (mut expanded_lines).push(final_line)
+        i += 1
+    }
+    i = 0
+    while i < expanded_lines.len {
+        let recipe_line_num = node.first_recipe_line + i
+        let final_line = expanded_lines[i]
         // Split the expanded value by newlines, but only on bare newlines
         // (backslash-newline is a continuation, not a line break)
         let lines = split_recipe_lines(final_line)

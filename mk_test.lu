@@ -577,3 +577,14 @@ fn test_function_value_origin_flavor() {
     assert((expand(v, "$(flavor S)", 1) else "") == "simple", "flavor: simple")
     assert((expand(v, "$(flavor nosuch)", 1) else "") == "undefined", "flavor: undefined")
 }
+
+fn test_function_messages() {
+    let v = new_vars()
+    assert((expand(v, "[$(info unit)]", 1) else "") == "[]", "info expands to nothing")
+    assert((expand(v, "[$(warning unit)]", 1) else "") == "[]", "warning expands to nothing")
+    assert(
+        (expand(v, "$(if ,$(error no),yes)", 1) else "REFUSED") == "yes",
+        "if does not expand the branch not taken",
+    )
+    assert((expand(v, "$(error boom)", 1) else "REFUSED") == "REFUSED", "error refuses")
+}

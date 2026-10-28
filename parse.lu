@@ -1221,31 +1221,43 @@ fn parse_makefile(
                                     line_num += 1
                                     continue
                                 }
-                                // Not .EXPORT_ALL_VARIABLES, try as rule
+                                // A line that starts with $(…) is a top-level function call,
+                                // not a rule: the : inside $(…) is not a rule separator.
+                                if stripped.starts_with("$(") {
+                                    let expanded_line = expand(
+                                        v,
+                                        stripped,
+                                        line_number,
+                                    ) else |e| match e {
+                                        Refuse(l, msg) => {
+                                            if msg.starts_with("*** ") {
+                                                // gmake's $(error …) at read time: fatal, nothing after it is read
+                                                return Parse(ParseErr {
+                                                    file: file,
+                                                    line: l,
+                                                    message: msg[4..msg.len],
+                                                })
+                                            }
+                                            (mut db.refusals).push(Refusal {
+                                                kind: msg,
+                                                line: l,
+                                            })
+                                            line_num += 1
+                                            continue
+                                        },
+                                        _ => "",
+                                    }
+                                    // gmake: a line that expands to nothing is nothing
+                                    if expanded_line.trim().len == 0 {
+                                        line_num += 1
+                                        continue
+                                    }
+                                }
+                                // Not a function call, try as rule
                                 let rule = parse_rule(stripped, line_number) else |e2| match e2 {
                                     none => {
                                         // Unknown line: not blank, not a comment, not a recipe line,
                                         // not an assignment, not a rule, not a refusal.
-                                        // Check if it's a function call at top level (e.g. $(info hi))
-                                        if stripped.starts_with("$(") {
-                                            // Try to expand it; if it's a gmake function, refuse it
-                                            let _ = expand(
-                                                v,
-                                                stripped,
-                                                line_number,
-                                            ) else |e| match e {
-                                                Refuse(l, msg) => {
-                                                    (mut db.refusals).push(Refusal {
-                                                        kind: msg,
-                                                        line: l,
-                                                    })
-                                                    line_num += 1
-                                                    continue
-                                                },
-                                                _ => "",
-                                            }
-                                        }
-                                        // This is a "missing separator" error.
                                         return Parse(ParseErr {
                                             file: file,
                                             line: line_number,

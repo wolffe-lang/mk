@@ -301,15 +301,6 @@ fn is_gmake_function(name: str) -> bool {
     // The complete list of gmake functions mk does not implement.
     // patsubst and filter formerly said "pattern rules are not supported";
     // the function name is the refusal, the % inside its arguments is not a pattern rule.
-    if name == "error" {
-        return true
-    }
-    if name == "warning" {
-        return true
-    }
-    if name == "info" {
-        return true
-    }
     if name == "word" {
         return true
     }
@@ -323,6 +314,9 @@ fn is_gmake_function(name: str) -> bool {
         return true
     }
     if name == "let" {
+        return true
+    }
+    if name == "eval" {
         return true
     }
     return false

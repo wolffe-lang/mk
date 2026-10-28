@@ -37,6 +37,9 @@ fn is_text_function(name: str) -> bool {
     if name == "subst" || name == "strip" || name == "findstring" {
         return true
     }
+    if name == "info" || name == "warning" || name == "error" {
+        return true
+    }
     if name == "words" || name == "firstword" || name == "lastword" {
         return true
     }
@@ -228,6 +231,26 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
         let p = split_args(args, 2)
         return filter_words(split_words(arg_at(p, 0)), split_words(arg_at(p, 1)), name == "filter")
     }
+    if name == "info" {
+        print(args.trim())
+        return ""
+    }
+    if name == "warning" {
+        eprint("{current_makefile(v)}:{line}: {args.trim()}")
+        return ""
+    }
+    if name == "error" {
+        let msg = args.trim()
+        // Expand automatic variables in the error message
+        let expanded = expand_auto(
+            msg,
+            var_value(v, "@"),
+            var_value(v, "<"),
+            var_value(v, "^"),
+            var_value(v, "?"),
+        )
+        return Refuse(line, "*** {expanded}")
+    }
     if name == "sort" {
         return join_words(sort_unique(split_words(args)))
     }
@@ -340,6 +363,15 @@ fn sort_unique(words: List[str]) -> List[str] {
         (mut out).insert(i, w)
     }
     out
+}
+
+/// The makefile being read or run: the last word of MAKEFILE_LIST.
+fn current_makefile(v: Vars) -> str {
+    let ws = split_words(var_value(v, "MAKEFILE_LIST"))
+    if ws.len == 0 {
+        return "Makefile"
+    }
+    ws[ws.len - 1]
 }
 
 /// A refusal whose message starts with "*** " is a gmake fatal line:

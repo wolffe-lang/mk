@@ -1,4 +1,4 @@
 # functions are not supported
-$(info hi)
+$(eval X = hi)
 all:
 	@echo done
