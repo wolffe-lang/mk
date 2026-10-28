@@ -255,10 +255,6 @@ fn check_refusal(line: str) -> str {
     if line.contains("::") {
         return "double-colon rules are not supported"
     }
-    // Functions: $(shell ...)
-    if line.contains("$(shell") {
-        return "functions are not supported"
-    }
     return ""
 }
 
@@ -350,7 +346,11 @@ fn parse_assignment(line: str, line_num: int) -> Assignment ! {none} {
             } else {
                 // Check for bare =
                 let eq = line.find("=") else 0
-                if eq > 0 {
+                if eq > 1 && line[eq - 1..eq] == "!" {
+                    // gmake's shell assignment: `V != cmd`
+                    op = "!="
+                    op_pos = eq - 1
+                } else if eq > 0 {
                     // Make sure it's not part of :=, ?=, or +=
                     op = "="
                     op_pos = eq

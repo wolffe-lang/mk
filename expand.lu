@@ -310,9 +310,6 @@ fn is_gmake_function(name: str) -> bool {
     if name == "file" {
         return true
     }
-    if name == "shell" {
-        return true
-    }
     if name == "let" {
         return true
     }

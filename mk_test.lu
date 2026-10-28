@@ -588,3 +588,23 @@ fn test_function_messages() {
     )
     assert((expand(v, "$(error boom)", 1) else "REFUSED") == "REFUSED", "error refuses")
 }
+
+fn test_function_shell() {
+    let v = new_vars()
+    assert(
+        (expand(v, "[$(shell echo a; echo b; echo)]", 1) else "") == "[a b]",
+        "shell joins lines and drops the trailing newlines",
+    )
+    let (out, status) = shell_output("echo x; exit 3")
+    assert(out == "x" && status == 3, "a failing command still gives its output, and its status")
+    let a = parse_assignment("N!=echo n", 1) else Assignment {
+        name: "",
+        op: "",
+        value: "",
+        line: 0,
+    }
+    assert(
+        a.name == "N" && a.op == "!=" && a.value == "echo n",
+        "!= is the shell assignment, not a name ending in !",
+    )
+}

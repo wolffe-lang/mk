@@ -8,6 +8,7 @@
 
 use std.env
 use std.fs
+use std.process
 
 /// The functions whose arguments are expanded only when needed (P2.3):
 /// the raw inside's first word, when it is one of them and whitespace
@@ -38,6 +39,9 @@ fn is_text_function(name: str) -> bool {
         return true
     }
     if name == "info" || name == "warning" || name == "error" {
+        return true
+    }
+    if name == "shell" {
         return true
     }
     if name == "words" || name == "firstword" || name == "lastword" {
@@ -190,7 +194,11 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
             return if env_val.len > 0 then "recursive" else "undefined"
         }
         let f = var_flavour(v, n)
-        return if f == ":=" || f == "::=" || f == "!=" then "simple" else "recursive"
+        return if f == ":=" || f == "::=" then "simple" else "recursive"
+    }
+    if name == "shell" {
+        let (out, _status) = shell_output(args)
+        return out
     }
     if name == "subst" {
         let p = split_args(args, 3)
@@ -363,6 +371,56 @@ fn sort_unique(words: List[str]) -> List[str] {
         (mut out).insert(i, w)
     }
     out
+}
+
+/// Run `cmd` with `/bin/sh -c`, as gmake's $(shell …) and `!=` do: the
+/// child's standard output with the trailing newlines dropped and every
+/// other newline turned into a space, and its exit status. The child's
+/// standard error is this program's.
+fn shell_output(cmd: str) -> (str, int) {
+    let p = process.pipe() else |e| match e {
+        io => return ("", 127),
+    }
+    let c = process.command("/bin/sh")
+    process.push_arg(mut c, "-c")
+    process.push_arg(mut c, cmd)
+    process.set_stdout(mut c, p.write)
+    let child = process.start(c) else |e| match e {
+        unsupported => return ("", 127),
+        invalid => return ("", 127),
+        not_found => return ("", 127),
+        denied => return ("", 126),
+        io => return ("", 127),
+    }
+    fs.close(take p.write) else |e| match e {
+        io => {},
+    }
+    var out = ""
+    var reading = true
+    while reading {
+        let chunk = fs.read(mut p.read, 4096) else |e| match e {
+            eof => "",
+            io => "",
+            utf8 => "",
+        }
+        if chunk.len == 0 {
+            reading = false
+        } else {
+            out = out + chunk
+        }
+    }
+    fs.close(take p.read) else |e| match e {
+        io => {},
+    }
+    let status = process.wait(take child) else |e| match e {
+        signal => 128,
+        io => 127,
+    }
+    var end = out.len
+    while end > 0 && out[end - 1..end] == "\n" {
+        end -= 1
+    }
+    (replace_all(out[0..end], "\n", " "), status)
 }
 
 /// The makefile being read or run: the last word of MAKEFILE_LIST.

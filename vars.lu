@@ -147,6 +147,17 @@ fn set_var_checked(mut v: Vars, name: str, value: str, flavour: str, line: int) 
         set_var(mut v, name, expanded, "=immediate", line)
         return
     }
+    if flavour == "!=" {
+        // gmake: expand the command now, run it, store its output as a recursive variable
+        let command = expand(v, value, line) else |e| match e {
+            Unterminated(l) => value,
+            Cycle(l, n) => value,
+            Refuse(l, msg) => return Refuse(l, msg),
+        }
+        let (out, _status) = shell_output(command)
+        set_var(mut v, name, out, "=", line)
+        return
+    }
     set_var(mut v, name, value, flavour, line)
 }
 
