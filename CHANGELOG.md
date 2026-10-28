@@ -16,6 +16,7 @@
 - `intcmp` orders negatives as numbers; gmake 4.4.1's both-negative answer is recorded as a divergence (README)
 - `foreach`, `call` (bound in a copy of the table, so nesting restores nothing), `value`, `origin`, `flavor`
 - `info`, `warning`, `error` (a top-level function line is expanded when read; a recipe's lines are all expanded before the first runs), and `MAKECMDGOALS`
+- `shell` and the `!=` assignment (`$(flavor)` of a `!=` variable is `recursive`, as gmake's)
 
 ### Fixed
 
