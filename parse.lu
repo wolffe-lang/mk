@@ -1157,12 +1157,13 @@ fn parse_makefile(
                 line_num += 1
                 continue
             }
-            set_var_checked(
+            set_var_checked_origin(
                 mut v,
                 assignment.name,
                 assignment.value,
                 assignment.op,
                 assignment.line,
+                "override",
             ) else |e| match e {
                 Refuse(l, msg) => {
                     (mut db.refusals).push(Refusal { kind: msg, line: l })

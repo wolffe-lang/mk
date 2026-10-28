@@ -150,7 +150,13 @@ fn build_target(
     while i < node.recipe.len {
         let recipe_line = node.recipe[i]
         let recipe_line_num = node.first_recipe_line + i
-        let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
+        // Set automatic variables in a copy of the table for this recipe
+        var rv = copy v
+        set_var(mut rv, "@", name, ":=", recipe_line_num)
+        set_var(mut rv, "<", first_prereq, ":=", recipe_line_num)
+        set_var(mut rv, "^", all_prereqs, ":=", recipe_line_num)
+        set_var(mut rv, "?", newer_prereqs_str, ":=", recipe_line_num)
+        let expanded = expand(rv, recipe_line, recipe_line_num) else |e| match e {
             Unterminated(l) => {
                 eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
                 return BuildResult {

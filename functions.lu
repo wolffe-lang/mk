@@ -54,7 +54,10 @@ fn is_text_function(name: str) -> bool {
         name == "filter-out" ||
         name == "sort" ||
         name == "word" ||
-        name == "wordlist" {
+        name == "wordlist" ||
+        name == "value" ||
+        name == "origin" ||
+        name == "flavor" {
         return true
     }
     false
@@ -144,6 +147,48 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
     Refuse(int, str),
 } {
     let args = function_args(inside)
+    if name == "value" {
+        return var_value(v, args.trim())
+    }
+    if name == "origin" {
+        let n = args.trim()
+        if n == "MAKE" {
+            return "default"
+        }
+        if is_automatic_name(n) {
+            return if in_rule(v) then "automatic" else "undefined"
+        }
+        if !var_defined(v, n) {
+            let env_val = env.get(n) else ""
+            return if env_val.len > 0 then "environment" else "undefined"
+        }
+        let o = var_origin(v, n)
+        if o == "env" {
+            return "environment"
+        }
+        if o == "env-override" {
+            return "environment override"
+        }
+        if o == "cli" {
+            return "command line"
+        }
+        if o == "override" {
+            return "override"
+        }
+        return "file"
+    }
+    if name == "flavor" {
+        let n = args.trim()
+        if is_automatic_name(n) {
+            return if in_rule(v) then "simple" else "undefined"
+        }
+        if !var_defined(v, n) {
+            let env_val = env.get(n) else ""
+            return if env_val.len > 0 then "recursive" else "undefined"
+        }
+        let f = var_flavour(v, n)
+        return if f == ":=" || f == "::=" || f == "!=" then "simple" else "recursive"
+    }
     if name == "subst" {
         let p = split_args(args, 3)
         return replace_all(arg_at(p, 2), arg_at(p, 0), arg_at(p, 1))

@@ -558,3 +558,22 @@ fn test_function_foreach_and_call() {
         "foreach: two arguments refuse",
     )
 }
+
+fn test_function_value_origin_flavor() {
+    let v = new_vars()
+    set_var(mut v, "R", "recursive $(S)", "=", 1)
+    set_var(mut v, "S", "simple", ":=", 1)
+    set_var_origin(mut v, "C", "c", "=", 1, "cli")
+    set_var_origin(mut v, "E", "e", "=", 1, "env")
+    assert((expand(v, "$(value R)", 1) else "") == "recursive $(S)", "value: the unexpanded text")
+    assert((expand(v, "$(value S)", 1) else "") == "simple", "value: a simple variable")
+    assert((expand(v, "[$(value nosuch)]", 1) else "") == "[]", "value: undefined is empty")
+    assert((expand(v, "$(origin R)", 1) else "") == "file", "origin: file")
+    assert((expand(v, "$(origin C)", 1) else "") == "command line", "origin: command line")
+    assert((expand(v, "$(origin E)", 1) else "") == "environment", "origin: environment")
+    assert((expand(v, "$(origin nosuch)", 1) else "") == "undefined", "origin: undefined")
+    assert((expand(v, "$(origin MAKE)", 1) else "") == "default", "origin: MAKE is default")
+    assert((expand(v, "$(flavor R)", 1) else "") == "recursive", "flavor: recursive")
+    assert((expand(v, "$(flavor S)", 1) else "") == "simple", "flavor: simple")
+    assert((expand(v, "$(flavor nosuch)", 1) else "") == "undefined", "flavor: undefined")
+}

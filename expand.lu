@@ -10,8 +10,7 @@
 //!   for every gmake function name (error, subst, patsubst, strip, findstring,
 //!   filter, filter-out, sort, word, wordlist, words, firstword, lastword, dir,
 //!   notdir, suffix, basename, addsuffix, addprefix, join, wildcard, realpath,
-//!   abspath, if, or, and, intcmp, foreach, file, call, value, eval, origin,
-//!   flavor, shell, info, let).
+//!   abspath, if, or, and, intcmp, foreach, file, call, eval, shell, info, let).
 //! - Unterminated reference error: expand returns {Unterminated(int)} with the line
 //! - Recursive self-reference error: expand returns {Cycle(int)} with the line
 //! - Function refusal: expand returns {Refuse(int, str)} with the line and message
@@ -318,18 +317,6 @@ fn is_gmake_function(name: str) -> bool {
         return true
     }
     if name == "file" {
-        return true
-    }
-    if name == "value" {
-        return true
-    }
-    if name == "eval" {
-        return true
-    }
-    if name == "origin" {
-        return true
-    }
-    if name == "flavor" {
         return true
     }
     if name == "shell" {

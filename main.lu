@@ -413,7 +413,7 @@ fn run(mut f: Flags) -> int {
         }
         let name = o[0..eq]
         let value = o[eq + 1..]
-        set_var_origin(mut v, name, value, ":=", 0, "cli")
+        set_var_origin(mut v, name, value, "=", 0, "cli")
         // CLI variables are always exported
         set_var_exported(mut v, name, true)
     }
@@ -432,7 +432,7 @@ fn run(mut f: Flags) -> int {
     set_var(mut v, "MAKE", "mk", "=", 0)
     // CURDIR: the working directory after -C (the physical path, symlinks resolved)
     let curdir = env.cwd() else |_| ""
-    set_var(mut v, "CURDIR", curdir, "=", 0)
+    set_var(mut v, "CURDIR", curdir, ":=", 0)
     // Determine the files to read: if -f was given, use those; otherwise use "Makefile"
     var files = List[str]()
     if f.files.len > 0 {

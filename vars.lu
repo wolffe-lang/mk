@@ -150,6 +150,27 @@ fn set_var_checked(mut v: Vars, name: str, value: str, flavour: str, line: int) 
     set_var(mut v, name, value, flavour, line)
 }
 
+/// Set a Makefile assignment with an origin; a refused construct in an immediate value is the caller's to report.
+fn set_var_checked_origin(
+    mut v: Vars,
+    name: str,
+    value: str,
+    flavour: str,
+    line: int,
+    origin: str,
+) -> () ! {Refuse(int, str)} {
+    if flavour == ":=" {
+        let expanded = expand(v, value, line) else |e| match e {
+            Unterminated(l) => value,
+            Cycle(l, n) => value,
+            Refuse(l, msg) => return Refuse(l, msg),
+        }
+        map.set(mut v.table, name, make_var(expanded, ":=", line, false, origin))
+        return
+    }
+    map.set(mut v.table, name, make_var(value, flavour, line, false, origin))
+}
+
 /// Remove a variable (undefine).
 fn undefine_var(mut v: Vars, name: str) {
     let _ = map.remove(mut v.table, name)
@@ -196,6 +217,34 @@ fn var_origin(v: Vars, name: str) -> str {
         return ""
     }
     return val.origin
+}
+
+/// Whether the table holds NAME (the environment does not count).
+fn var_defined(v: Vars, name: str) -> bool {
+    let _ = map.get(v.table, name) else {
+        return false
+    }
+    true
+}
+
+/// The automatic variables' names (`@ < ^ ? * % + |` and their D/F forms).
+fn is_automatic_name(name: str) -> bool {
+    if name.len == 1 {
+        return name == "@" ||
+            name == "<" ||
+            name == "^" ||
+            name == "?" ||
+            name == "*" ||
+            name == "%" ||
+            name == "+" ||
+            name == "|"
+    }
+    name.len == 2 && is_automatic_name(name[0..1]) && (name[1..2] == "D" || name[1..2] == "F")
+}
+
+/// Whether a rule is active (the `@` automatic variable is set).
+fn in_rule(v: Vars) -> bool {
+    var_defined(v, "@")
 }
 
 /// Set the exported flag of a variable.
