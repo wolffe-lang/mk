@@ -93,6 +93,13 @@ the reader treats `!=` before `=`/`:=`/`?=`/`+=` as gmake's precedence does — 
 A failing command still assigns (its stdout) and `.SHELLSTATUS` carries the status. Rows `functions-shell/`; tests; README.
 Commits: `rows: shell and != (red)`, `functions: shell and the != assignment`.
 
+**Split at the brief (2026-10-28):** P2.6 is `$(shell)` and `!=` (`sessions/P2.6-shell.md`, every line measured on gmake
+4.4.1 and the edits built and run green on a copy first). **P2.6b** is `.SHELLSTATUS`: the expander's variable table is
+read-only inside `expand`, so the status of a `$(shell)` needs a path out of the expander — its own session. **P2.6c** is an
+older divergence found while measuring: an unterminated function call (`Y := $(subst a,b,abc`) is passed through to the
+shell (`/bin/sh: … unexpected EOF`) where gmake stops with `FILE:LINE: *** unterminated call to function 'subst': missing
+')'.  Stop.` — every function, at read time and in a recipe.
+
 ### P2.7 — `eval`, `let`, `file`
 
 `$(eval text)` parses `text` as makefile lines in place (the one-pass reader gets an entry point that reads from a string
