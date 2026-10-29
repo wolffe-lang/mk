@@ -148,17 +148,26 @@ fn join_words(words: List[str]) -> str {
 
 /// Evaluate a text function. `inside` is the whole expanded reference text
 /// (name and arguments); `name` is its first word.
-fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> str ! {
-    Unterminated(int, str),
-    Cycle(int, str),
-    Refuse(int, str),
-} {
+fn call_function(
+    mut st: ShellStatus,
+    v: Vars,
+    name: str,
+    inside: str,
+    visiting: str,
+    line: int,
+) -> str ! {Unterminated(int, str), Cycle(int, str), Refuse(int, str)} {
     let args = function_args(inside)
     if name == "value" {
+        if args.trim() == ".SHELLSTATUS" && st.last >= 0 {
+            return "{st.last}"
+        }
         return var_value(v, args.trim())
     }
     if name == "origin" {
         let n = args.trim()
+        if n == ".SHELLSTATUS" && st.last >= 0 {
+            return "override"
+        }
         if n == "MAKE" {
             return "default"
         }
@@ -186,6 +195,9 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
     }
     if name == "flavor" {
         let n = args.trim()
+        if n == ".SHELLSTATUS" && st.last >= 0 {
+            return "simple"
+        }
         if is_automatic_name(n) {
             return if in_rule(v) then "simple" else "undefined"
         }
@@ -197,7 +209,8 @@ fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> s
         return if f == ":=" || f == "::=" then "simple" else "recursive"
     }
     if name == "shell" {
-        let (out, _status) = shell_output(args)
+        let (out, status) = shell_output(args)
+        st.last = status
         return out
     }
     if name == "subst" {
@@ -412,10 +425,10 @@ fn shell_output(cmd: str) -> (str, int) {
     fs.close(take p.read) else |e| match e {
         io => {},
     }
-    let status = process.wait(take child) else |e| match e {
-        signal => 128,
+    let ended = process.wait_status(take child) else |e| match e {
         io => 127,
     }
+    let status = if ended < 0 then 128 - ended else ended
     var end = out.len
     while end > 0 && out[end - 1..end] == "\n" {
         end -= 1
@@ -572,17 +585,20 @@ fn wildcard_words(patterns: List[str]) -> List[str] {
 /// condition (non-empty after whitespace is stripped) and then only the
 /// chosen branch; `or` expands its arguments in order and answers the
 /// first non-empty one; `and` answers the last if none is empty, else "".
-fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> str ! {
-    Unterminated(int, str),
-    Cycle(int, str),
-    Refuse(int, str),
-} {
+fn call_lazy_function(
+    mut st: ShellStatus,
+    v: Vars,
+    name: str,
+    inside: str,
+    visiting: str,
+    line: int,
+) -> str ! {Unterminated(int, str), Cycle(int, str), Refuse(int, str)} {
     let args = function_args(inside)
     if name == "if" {
         let p = split_args(args, 3)
-        let cond = expand_inner(v, arg_at(p, 0), visiting, line)?
+        let cond = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
         let branch = if join_words(split_words(cond)).len > 0 then arg_at(p, 1) else arg_at(p, 2)
-        return expand_inner(v, branch, visiting, line)?
+        return expand_inner(mut st, v, branch, visiting, line)?
     }
     if name == "foreach" {
         let p = split_args(args, 3)
@@ -592,20 +608,20 @@ fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int)
                 "*** insufficient number of arguments ({p.len}) to function 'foreach'",
             )
         }
-        let var_name = expand_inner(v, arg_at(p, 0), visiting, line)?
-        let list = expand_inner(v, arg_at(p, 1), visiting, line)?
+        let var_name = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
+        let list = expand_inner(mut st, v, arg_at(p, 1), visiting, line)?
         var out = ""
         var w = copy v
         for word in split_words(list) {
             set_var(mut w, var_name, word, ":=", line)
-            let piece = expand_inner(w, arg_at(p, 2), visiting, line)?
+            let piece = expand_inner(mut st, w, arg_at(p, 2), visiting, line)?
             out = if out.len == 0 then piece else out + " " + piece
         }
         return out
     }
     if name == "call" {
         let p = split_args(args, 64)
-        let fn_name = expand_inner(v, arg_at(p, 0), visiting, line)?
+        let fn_name = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
         if fn_name.len == 0 {
             return ""
         }
@@ -614,11 +630,11 @@ fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int)
         set_var(mut w, "0", fn_name, ":=", line)
         var i = 1
         while i < p.len {
-            let value = expand_inner(v, arg_at(p, i), visiting, line)?
+            let value = expand_inner(mut st, v, arg_at(p, i), visiting, line)?
             set_var(mut w, "{i}", value, ":=", line)
             i = i + 1
         }
-        return expand_inner(w, fn_body, visiting, line)?
+        return expand_inner(mut st, w, fn_body, visiting, line)?
     }
     if name == "intcmp" {
         let p = split_args(args, 5)
@@ -628,8 +644,8 @@ fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int)
                 "*** insufficient number of arguments ({p.len}) to function 'intcmp'",
             )
         }
-        let lhs_text = expand_inner(v, arg_at(p, 0), visiting, line)?
-        let rhs_text = expand_inner(v, arg_at(p, 1), visiting, line)?
+        let lhs_text = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
+        let rhs_text = expand_inner(mut st, v, arg_at(p, 1), visiting, line)?
         let lhs = int_arg(lhs_text, "first", line)?
         let rhs = int_arg(rhs_text, "second", line)?
         if p.len == 2 {
@@ -644,12 +660,12 @@ fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int)
         } else {
             arg_at(p, 4)
         }
-        return expand_inner(v, part, visiting, line)?
+        return expand_inner(mut st, v, part, visiting, line)?
     }
     let p = split_args(args, 64)
     var last = ""
     for piece in p {
-        let value = expand_inner(v, piece, visiting, line)?
+        let value = expand_inner(mut st, v, piece, visiting, line)?
         if name == "or" {
             if value.len > 0 {
                 return value

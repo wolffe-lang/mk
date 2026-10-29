@@ -54,6 +54,13 @@ fn make_var(value: str, flavour: str, line: int, exported: bool, origin: str) ->
     Var { value: value, flavour: flavour, line: line, exported: exported, origin: origin }
 }
 
+/// A shell's status is an override-origin simple variable, not shell output.
+fn store_shell_status(mut v: Vars, status: int, line: int) {
+    if status >= 0 {
+        map.set(mut v.table, ".SHELLSTATUS", make_var("{status}", ":=", line, false, "override"))
+    }
+}
+
 /// Set a variable with a given flavour.
 /// If `skip_if_set` is true and the name is already in the table, the assignment is a no-op.
 /// This is used for command-line overrides: a Makefile assignment to a command-line name
@@ -76,7 +83,7 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
             // += keeps the flavour: append to := expands the value, append to = stores text
             let new_value = if existing_flavour == ":=" {
                 // Append to immediate: expand the new value and append
-                let expanded = expand(v, value, line) else |e| match e {
+                let expanded = expand_store(mut v, value, line) else |e| match e {
                     Unterminated(l, m) => value,
                     Cycle(l, n) => value,
                     Refuse(l, msg) => value,
@@ -99,7 +106,7 @@ fn set_var_impl(mut v: Vars, name: str, value: str, flavour: str, line: int, ski
         map.set(mut v.table, name, make_var(value, ":=", line, false, ""))
     } else if flavour == ":=" {
         // := expands immediately
-        let expanded = expand(v, value, line) else |e| match e {
+        let expanded = expand_store(mut v, value, line) else |e| match e {
             Unterminated(l, m) => value,
             Cycle(l, n) => value,
             Refuse(l, msg) => value,
@@ -118,7 +125,7 @@ fn set_var(mut v: Vars, name: str, value: str, flavour: str, line: int) {
 /// Set a variable with a given flavour and origin (skip_if_set = false).
 fn set_var_origin(mut v: Vars, name: str, value: str, flavour: str, line: int, origin: str) {
     if flavour == ":=" {
-        let expanded = expand(v, value, line) else |e| match e {
+        let expanded = expand_store(mut v, value, line) else |e| match e {
             Unterminated(l, m) => value,
             Cycle(l, n) => value,
             Refuse(l, msg) => value,
@@ -140,7 +147,7 @@ fn set_var_checked(mut v: Vars, name: str, value: str, flavour: str, line: int) 
     Refuse(int, str),
 } {
     if flavour == ":=" {
-        let expanded = expand(v, value, line) else |e| match e {
+        let expanded = expand_store(mut v, value, line) else |e| match e {
             Unterminated(l, m) => return Unterminated(l, m),
             Cycle(l, n) => value,
             Refuse(l, msg) => return Refuse(l, msg),
@@ -150,12 +157,13 @@ fn set_var_checked(mut v: Vars, name: str, value: str, flavour: str, line: int) 
     }
     if flavour == "!=" {
         // gmake: expand the command now, run it, store its output as a recursive variable
-        let command = expand(v, value, line) else |e| match e {
+        let command = expand_store(mut v, value, line) else |e| match e {
             Unterminated(l, m) => return Unterminated(l, m),
             Cycle(l, n) => value,
             Refuse(l, msg) => return Refuse(l, msg),
         }
-        let (out, _status) = shell_output(command)
+        let (out, status) = shell_output(command)
+        store_shell_status(mut v, status, line)
         set_var(mut v, name, out, "=", line)
         return
     }
@@ -172,7 +180,7 @@ fn set_var_checked_origin(
     origin: str,
 ) -> () ! {Unterminated(int, str), Refuse(int, str)} {
     if flavour == ":=" {
-        let expanded = expand(v, value, line) else |e| match e {
+        let expanded = expand_store(mut v, value, line) else |e| match e {
             Unterminated(l, m) => return Unterminated(l, m),
             Cycle(l, n) => value,
             Refuse(l, msg) => return Refuse(l, msg),

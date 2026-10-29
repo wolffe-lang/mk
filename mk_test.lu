@@ -629,3 +629,37 @@ fn test_unterminated_messages() {
         "a function name with no argument is a variable",
     )
 }
+
+fn test_shellstatus_cell() {
+    let v = new_vars()
+    let (empty, absent) = expand_status(v, "$(.SHELLSTATUS)", 1) else ("error", -2)
+    assert(empty == "" && absent == -1, "no shell leaves the sentinel")
+    let (out, status) = expand_status(v, "$(shell exit 7)$(.SHELLSTATUS)", 1) else ("error", -2)
+    assert(out == "7" && status == 7, "same-expansion visibility and returned status")
+    assert(!var_defined(v, ".SHELLSTATUS"), "read-only expansion leaves the table alone")
+}
+
+fn test_shellstatus_store() {
+    var v = new_vars()
+    set_var(mut v, "R", "$(shell exit 3)", "=", 1)
+    assert(!var_defined(v, ".SHELLSTATUS"), "recursive assignment does not run a shell")
+    let out = expand_store(
+        mut v,
+        "$(R)$(origin .SHELLSTATUS)/$(flavor .SHELLSTATUS)/$(value .SHELLSTATUS)",
+        2,
+    ) else "error"
+    assert(out == "override/simple/3", "metadata sees the cell too")
+    assert(var_value(v, ".SHELLSTATUS") == "3", "persist the status")
+    assert(var_origin(v, ".SHELLSTATUS") == "override", "override origin")
+    assert(var_flavour(v, ".SHELLSTATUS") == ":=", "simple flavor")
+    let unchanged = expand_store(mut v, "$(.SHELLSTATUS)", 3) else "error"
+    assert(
+        unchanged == "3" && var_value(v, ".SHELLSTATUS") == "3",
+        "no shell preserves prior status",
+    )
+}
+
+fn test_shellstatus_signal() {
+    let (out, status) = shell_output("kill -9 $$")
+    assert(out == "" && status == 137, "signal 9 becomes 128 + 9")
+}

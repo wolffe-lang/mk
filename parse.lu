@@ -955,7 +955,7 @@ fn parse_makefile(
             // Apply the define to the variable table
             if top.op == ":=" {
                 // Immediate expansion
-                let expanded = expand(v, top.value, top.line) else |e| match e {
+                let expanded = expand_store(mut v, top.value, top.line) else |e| match e {
                     Unterminated(l, m) => {
                         eprint("{file}:{l}: *** {m}.  Stop.")
                         return parse
@@ -1232,8 +1232,8 @@ fn parse_makefile(
                                 // A line that starts with $(…) is a top-level function call,
                                 // not a rule: the : inside $(…) is not a rule separator.
                                 if stripped.starts_with("$(") {
-                                    let expanded_line = expand(
-                                        v,
+                                    let expanded_line = expand_store(
+                                        mut v,
                                         stripped,
                                         line_number,
                                     ) else |e| match e {
@@ -1296,7 +1296,7 @@ fn parse_makefile(
                 // Process the include directive
                 for name in include.names {
                     // Expand the name
-                    let expanded = expand(v, name, include.line) else |e| match e {
+                    let expanded = expand_store(mut v, name, include.line) else |e| match e {
                         Unterminated(l, m) => {
                             eprint("{file}:{l}: *** {m}.  Stop.")
                             return parse

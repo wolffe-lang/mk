@@ -17,6 +17,7 @@
 - `foreach`, `call` (bound in a copy of the table, so nesting restores nothing), `value`, `origin`, `flavor`
 - `info`, `warning`, `error` (a top-level function line is expanded when read; a recipe's lines are all expanded before the first runs), and `MAKECMDGOALS`
 - `shell` and the `!=` assignment (`$(flavor)` of a `!=` variable is `recursive`, as gmake's)
+- `.SHELLSTATUS` records the last `shell` or `!=` exit status, with override origin and simple flavor; recursive and lazy calls expose it later in the same expansion, and a signal reports 128 plus its number
 - an unclosed `$( ` or `${` stops as gmake does — `unterminated call to function 'NAME': missing ')'` for a function, `unterminated variable reference` otherwise — at read time through `:=`, `!=` and a top-level call, and before a recipe's first line runs
 
 ### Fixed

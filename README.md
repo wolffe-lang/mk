@@ -70,6 +70,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `foreach`, `call`, `value`, `origin`, `flavor` | `$(foreach i,$(LIST),$(i).o)` `$(call fn,a,b)` (`$(1)`, `$(2)`, `$(0)` bound for the call) `$(value V)` (the unexpanded text) `$(origin V)` (`undefined`, `default`, `environment`, `environment override`, `file`, `command line`, `override`, `automatic`) `$(flavor V)` (`undefined`, `recursive`, `simple`) |
 | `info`, `warning`, `error`, `MAKECMDGOALS` | `$(info text)` (stdout, expands to nothing) `$(warning text)` (`FILE:LINE: text` on stderr) `$(error text)` (`FILE:LINE: *** text.  Stop.`, exit 2; a recipe's lines are all expanded before the first runs, as gmake does) `$(MAKECMDGOALS)` (the command-line goals) |
 | `shell`, `!=` | `$(shell cmd)` (`/bin/sh -c`, standard output with the trailing newlines dropped and the others turned into spaces) `V != cmd` (run once when read, stored as a recursive variable; a failing command still assigns) |
+| `.SHELLSTATUS` | `X := $(shell exit 3)` then `$(.SHELLSTATUS)` is `3`, origin `override`, flavor `simple`; a recursive shell's status is visible later in the same expansion |
 | `include` / `-include` / `sinclude` | `include $(DIR)/x.mk` |
 | `-I DIR` | search DIR for included makefiles |
 | `ifeq` / `ifneq` / `ifdef` / `ifndef` / `else` / `endif` | `ifeq ($(A),$(B))` |
