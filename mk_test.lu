@@ -1,5 +1,7 @@
 //! mk_test.lu — unit tests for the parser and variable flavours.
 
+use std.fs
+
 fn parse_assignment_ok(line: str, n: int) -> Assignment {
     parse_assignment(line, n) else Assignment { name: "", op: "", value: "", line: 0 }
 }
@@ -662,4 +664,130 @@ fn test_shellstatus_store() {
 fn test_shellstatus_signal() {
     let (out, status) = shell_output("kill -9 $$")
     assert(out == "" && status == 137, "signal 9 becomes 128 + 9")
+}
+
+fn test_let_scope() {
+    var v = new_vars()
+    set_var_origin(mut v, "a", "outer", ":=", 1, "cli")
+    let out = expand(v, "$(let a,one,[$(a)]$(let a,two,[$(a)])[$(a)])[$(a)]", 2) else "error"
+    assert(out == "[one][two][one][outer]", "nested copies restore command-line binding")
+    assert(
+        (expand(v, "$(let a,$$x,[$(a)])", 2) else "error") == "[$x]",
+        "no second expansion of bound value",
+    )
+    assert(
+        (expand(v, "$(let a,one,$(origin a)/$(flavor a))", 2) else "error") == "automatic/simple",
+        "binding metadata",
+    )
+    assert(var_value(v, "a") == "outer", "caller unchanged")
+}
+
+fn test_let_errors() {
+    let v = new_vars()
+    let msg = expand(v, "$(let a,b)", 7) else |e| match e {
+        Refuse(l, m) => "{l}:{m}",
+        _ => "wrong error",
+    }
+    assert(
+        msg == "7:*** insufficient number of arguments (2) to function 'let'",
+        "let arity is fatal",
+    )
+    assert(
+        !is_gmake_function("let") && !is_gmake_function("file") && is_gmake_function("eval"),
+        "eval stays refused",
+    )
+    assert(
+        check_refusal("X := $(let a,b,$(file >x,$(a)))") == "",
+        "line scan does not refuse supported calls",
+    )
+}
+
+fn test_file_roundtrip() {
+    let path = ".mk-p27a-roundtrip.txt"
+    assert((file_operation(">{path}", "hello", true, 1) else "error") == "", "write returns empty")
+    assert(
+        (file_operation(">>{path}", "world", true, 1) else "error") == "",
+        "append returns empty",
+    )
+    assert((fs.read_text(path) else "error") == "hello\nworld\n", "each write adds newline")
+    assert(
+        (file_operation("<{path}", "", false, 1) else "error") == "hello\nworld",
+        "read drops exactly final newline",
+    )
+    fs.remove(path) else { assert(false, "remove roundtrip fixture") }
+}
+
+fn test_file_empty_and_newlines() {
+    let path = ".mk-p27a-empty.txt"
+    let _out = file_operation(">{path}", "", false, 1) else "error"
+    assert((fs.size(path) else -1) == 0, "omitted text creates zero bytes")
+    let _blank = file_operation(">{path}", "", true, 1) else "error"
+    assert((fs.read_text(path) else "error") == "\n", "explicit empty text writes newline")
+    let _nl = file_operation(">{path}", "hello\n\n", true, 1) else "error"
+    assert(
+        (fs.read_text(path) else "error") == "hello\n\n",
+        "no extra newline when already present",
+    )
+    assert(
+        (file_operation("<{path}", "", false, 1) else "error") == "hello\n",
+        "read keeps earlier newline",
+    )
+    fs.remove(path) else { assert(false, "remove empty fixture") }
+}
+
+fn test_file_errors() {
+    assert(
+        (file_operation("<.mk-p27a-absent.txt", "", false, 1) else "error") == "",
+        "missing read is empty",
+    )
+    let bad = file_operation("bad", "x", true, 3) else |e| match e {
+        Refuse(l, m) => "{l}:{m}",
+    }
+    assert(bad == "3:*** file: invalid file operation: bad", "invalid operation")
+    let extra = file_operation("<.mk-p27a-absent.txt", "extra", true, 1) else |e| match e {
+        Refuse(l, m) => m,
+    }
+    assert(extra == "*** file: too many arguments", "read rejects text even for a missing file")
+    let absent = file_operation(">", "", false, 1) else |e| match e {
+        Refuse(l, m) => m,
+    }
+    assert(absent == "*** file: missing filename", "missing filename")
+    let parent = file_operation(">.mk-p27a-no-dir/x", "hi", true, 1) else |e| match e {
+        Refuse(l, m) => m,
+    }
+    assert(parent == "*** open: .mk-p27a-no-dir/x: No such file or directory", "open failure")
+}
+
+fn test_file_lazy() {
+    var v = new_vars()
+    let path = ".mk-p27a-lazy.txt"
+    set_var(mut v, "R", "$(file >{path},one,two)", "=", 1)
+    assert(!fs.exists(path), "recursive assignment is lazy")
+    let (skipped, status) = expand_status(v, "$(if ,$(R),skip)", 2) else ("error", -2)
+    assert(
+        skipped == "skip" && status == -1 && !fs.exists(path),
+        "unchosen branch does no I/O or shell",
+    )
+    let (out, used_status) = expand_status(v, "$(R)", 2) else ("error", -2)
+    assert(out == "" && used_status == -1, "file does not set shell status")
+    assert((fs.read_text(path) else "error") == "one,two\n", "commas belong to text")
+    fs.remove(path) else { assert(false, "remove lazy fixture") }
+}
+
+fn test_let_distribution() {
+    let v = new_vars()
+    assert(
+        (expand(v, "$(let a b rest,1 2 3 4,$(a)-$(b)-$(rest))", 1) else "error") == "1-2-3 4",
+        "last name takes remainder",
+    )
+    assert(
+        (expand(v, "$(let a b,1,[$(a)][$(b)])", 1) else "error") == "[1][]",
+        "missing words bind empty",
+    )
+    assert((expand(v, "$(let a,,[$(a)])", 1) else "error") == "[]", "empty list")
+    assert((expand(v, "$(let ,1 2,x)", 1) else "error") == "x", "no names still expands body")
+    assert(
+        (expand(v, "$(let a b,  1   2  3  ,[$(b)])", 1) else "error") == "[2  3  ]",
+        "preserve tail whitespace",
+    )
 }

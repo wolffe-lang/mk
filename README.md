@@ -71,6 +71,8 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `info`, `warning`, `error`, `MAKECMDGOALS` | `$(info text)` (stdout, expands to nothing) `$(warning text)` (`FILE:LINE: text` on stderr) `$(error text)` (`FILE:LINE: *** text.  Stop.`, exit 2; a recipe's lines are all expanded before the first runs, as gmake does) `$(MAKECMDGOALS)` (the command-line goals) |
 | `shell`, `!=` | `$(shell cmd)` (`/bin/sh -c`, standard output with the trailing newlines dropped and the others turned into spaces) `V != cmd` (run once when read, stored as a recursive variable; a failing command still assigns) |
 | `.SHELLSTATUS` | `X := $(shell exit 3)` then `$(.SHELLSTATUS)` is `3`, origin `override`, flavor `simple`; a recursive shell's status is visible later in the same expansion |
+| `let` | `$(let a b rest,1 2 3 4,$(a)-$(b)-$(rest))` is `1-2-3 4`; bindings are local, automatic-origin and simple-flavor; the last name keeps the remaining text |
+| `file` | `$(file >out.txt,hello)` overwrites, `>>` appends, `<` reads and drops only the final newline; missing reads and writes return empty; omitted text creates zero bytes, explicit text gains a newline only if needed |
 | `include` / `-include` / `sinclude` | `include $(DIR)/x.mk` |
 | `-I DIR` | search DIR for included makefiles |
 | `ifeq` / `ifneq` / `ifdef` / `ifndef` / `else` / `endif` | `ifeq ($(A),$(B))` |
@@ -90,7 +92,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `.SUFFIXES` | `.SUFFIXES is not supported` |
 | `|` order-only prerequisites | `order-only prerequisites are not supported` |
 | `::` double-colon rules | `double-colon rules are not supported` |
-| `$(eval …)` / `$(file …)` / `$(let …)` and the other functions not yet listed above | `functions are not supported` |
+| `$(eval …)` | `functions are not supported` |
 
 ## Out-of-date rule
 

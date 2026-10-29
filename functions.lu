@@ -9,6 +9,7 @@
 use std.env
 use std.fs
 use std.process
+use std.map
 
 /// The functions whose arguments are expanded only when needed (P2.3):
 /// the raw inside's first word, when it is one of them and whitespace
@@ -27,7 +28,9 @@ fn lazy_function_name(inside: str) -> str {
         name == "and" ||
         name == "intcmp" ||
         name == "foreach" ||
-        name == "call" {
+        name == "call" ||
+        name == "let" ||
+        name == "file" {
         return name
     }
     ""
@@ -179,6 +182,9 @@ fn call_function(
             return if env_val.len > 0 then "environment" else "undefined"
         }
         let o = var_origin(v, n)
+        if o == "automatic" {
+            return "automatic"
+        }
         if o == "env" {
             return "environment"
         }
@@ -600,6 +606,23 @@ fn call_lazy_function(
         let branch = if join_words(split_words(cond)).len > 0 then arg_at(p, 1) else arg_at(p, 2)
         return expand_inner(mut st, v, branch, visiting, line)?
     }
+    if name == "let" {
+        let p = split_args(args, 3)
+        if p.len < 3 {
+            return Refuse(line, "*** insufficient number of arguments ({p.len}) to function 'let'")
+        }
+        let names = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
+        let list = expand_inner(mut st, v, arg_at(p, 1), visiting, line)?
+        var w = copy v
+        bind_let(mut w, split_words(names), list, line)
+        return expand_inner(mut st, w, arg_at(p, 2), visiting, line)?
+    }
+    if name == "file" {
+        let p = split_args(args, 2)
+        let operation = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
+        let text = expand_inner(mut st, v, arg_at(p, 1), visiting, line)?
+        return file_operation(operation, text, p.len > 1, line)?
+    }
     if name == "foreach" {
         let p = split_args(args, 3)
         if p.len < 3 {
@@ -679,6 +702,81 @@ fn call_lazy_function(
         return ""
     }
     last
+}
+
+/// Bind already-expanded values without expanding dollar signs again.
+/// The last name receives the original tail, including its whitespace.
+fn bind_let(mut w: Vars, names: List[str], list: str, line: int) {
+    var pos = 0
+    var i = 0
+    while i < names.len {
+        while pos < list.len && let_space(list[pos..pos + 1]) {
+            pos += 1
+        }
+        let start = pos
+        if i == names.len - 1 {
+            pos = list.len
+        } else {
+            while pos < list.len && !let_space(list[pos..pos + 1]) {
+                pos += 1
+            }
+        }
+        map.set(mut w.table, names[i], make_var(list[start..pos], ":=", line, false, "automatic"))
+        i += 1
+    }
+}
+
+fn let_space(c: str) -> bool {
+    c == " " || c == "\t" || c == "\n" || c == "\r"
+}
+
+/// file's first comma separates operation from text; the rest is text.
+fn file_operation(operation: str, text: str, has_text: bool, line: int) -> str ! {
+    Refuse(int, str),
+} {
+    let op = operation.trim()
+    if !op.starts_with(">") && !op.starts_with("<") {
+        return Refuse(line, "*** file: invalid file operation: {op}")
+    }
+    let append = op.starts_with(">>")
+    let cut = if append then 2 else 1
+    let path = op[cut..].trim()
+    if path.len == 0 {
+        return Refuse(line, "*** file: missing filename")
+    }
+    if op.starts_with("<") {
+        if has_text {
+            return Refuse(line, "*** file: too many arguments")
+        }
+        let raw = fs.read_text(path) else |e| match e {
+            not_found => return "",
+            denied => return Refuse(line, "*** open: {path}: Permission denied"),
+            io => return Refuse(line, "*** open: {path}: Input/output error"),
+            utf8 => return Refuse(line, "*** read: {path}: Invalid UTF-8"),
+        }
+        let end = if raw.ends_with("\n") then raw.len - 1 else raw.len
+        return raw[0..end]
+    }
+    let data = if has_text && !text.ends_with("\n") then text + "\n" else text
+    file_write(path, data, append, line)?
+    ""
+}
+
+/// Use append mode, not read/modify/write; an omitted text writes no bytes.
+fn file_write(path: str, data: str, append: bool, line: int) -> () ! {Refuse(int, str)} {
+    if append {
+        fs.append_text(path, data) else |e| match e {
+            not_found => return Refuse(line, "*** open: {path}: No such file or directory"),
+            denied => return Refuse(line, "*** open: {path}: Permission denied"),
+            io => return Refuse(line, "*** open: {path}: Input/output error"),
+        }
+    } else {
+        fs.write_text(path, data) else |e| match e {
+            not_found => return Refuse(line, "*** open: {path}: No such file or directory"),
+            denied => return Refuse(line, "*** open: {path}: Permission denied"),
+            io => return Refuse(line, "*** open: {path}: Input/output error"),
+        }
+    }
 }
 
 /// An `intcmp` argument: an optional sign and decimal digits (whitespace
