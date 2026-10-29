@@ -579,7 +579,7 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         }
         // Expand the name
         let expanded = expand(v, name, line_num) else |e| match e {
-            Unterminated(l) => return parse,
+            Unterminated(l, m) => return parse,
             Cycle(l, n) => return parse,
             Refuse(l, msg) => return parse,
         }
@@ -637,12 +637,12 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         let right_trimmed = right.trim_start()
         // Expand both sides
         let left_expanded = expand(v, left_trimmed, line_num) else |e| match e {
-            Unterminated(l) => return parse,
+            Unterminated(l, m) => return parse,
             Cycle(l, n) => return parse,
             Refuse(l, msg) => return parse,
         }
         let right_expanded = expand(v, right_trimmed, line_num) else |e| match e {
-            Unterminated(l) => return parse,
+            Unterminated(l, m) => return parse,
             Cycle(l, n) => return parse,
             Refuse(l, msg) => return parse,
         }
@@ -692,12 +692,12 @@ fn eval_conditional(v: Vars, line: str, kind: str, line_num: int) -> bool ! {
         let right = rest2[1..close2 + 1]
         // Expand both sides (no trimming — the text between quotes is exact)
         let left_expanded = expand(v, left, line_num) else |e| match e {
-            Unterminated(l) => return parse,
+            Unterminated(l, m) => return parse,
             Cycle(l, n) => return parse,
             Refuse(l, msg) => return parse,
         }
         let right_expanded = expand(v, right, line_num) else |e| match e {
-            Unterminated(l) => return parse,
+            Unterminated(l, m) => return parse,
             Cycle(l, n) => return parse,
             Refuse(l, msg) => return parse,
         }
@@ -956,8 +956,8 @@ fn parse_makefile(
             if top.op == ":=" {
                 // Immediate expansion
                 let expanded = expand(v, top.value, top.line) else |e| match e {
-                    Unterminated(l) => {
-                        eprint("{file}:{l}: *** unterminated variable reference.  Stop.")
+                    Unterminated(l, m) => {
+                        eprint("{file}:{l}: *** {m}.  Stop.")
                         return parse
                     },
                     Cycle(l, n) => {
@@ -1100,6 +1100,10 @@ fn parse_makefile(
                     rest[p..].trim()
                 }
                 set_var_checked(mut v, name, value, op, line_number) else |e| match e {
+                    Unterminated(l, m) => {
+                        eprint("{file}:{l}: *** {m}.  Stop.")
+                        return parse
+                    },
                     Refuse(l, msg) => {
                         (mut db.refusals).push(Refusal { kind: msg, line: l })
                         line_num += 1
@@ -1165,6 +1169,10 @@ fn parse_makefile(
                 assignment.line,
                 "override",
             ) else |e| match e {
+                Unterminated(l, m) => {
+                    eprint("{file}:{l}: *** {m}.  Stop.")
+                    return parse
+                },
                 Refuse(l, msg) => {
                     (mut db.refusals).push(Refusal { kind: msg, line: l })
                     line_num += 1
@@ -1245,6 +1253,13 @@ fn parse_makefile(
                                             line_num += 1
                                             continue
                                         },
+                                        Unterminated(l, m) => {
+                                            return Parse(ParseErr {
+                                                file: file,
+                                                line: l,
+                                                message: m,
+                                            })
+                                        },
                                         _ => "",
                                     }
                                     // gmake: a line that expands to nothing is nothing
@@ -1282,8 +1297,8 @@ fn parse_makefile(
                 for name in include.names {
                     // Expand the name
                     let expanded = expand(v, name, include.line) else |e| match e {
-                        Unterminated(l) => {
-                            eprint("{file}:{l}: *** unterminated variable reference.  Stop.")
+                        Unterminated(l, m) => {
+                            eprint("{file}:{l}: *** {m}.  Stop.")
                             return parse
                         },
                         Cycle(l, n) => {
@@ -1370,6 +1385,10 @@ fn parse_makefile(
                                     a.op,
                                     a.line,
                                 ) else |e| match e {
+                                    Unterminated(l, m) => {
+                                        eprint("{g}:{l}: *** {m}.  Stop.")
+                                        return parse
+                                    },
                                     Refuse(l, msg) => {
                                         (mut db.refusals).push(Refusal { kind: msg, line: l })
                                         continue
@@ -1444,6 +1463,10 @@ fn parse_makefile(
                     assignment.op,
                     assignment.line,
                 ) else |e| match e {
+                    Unterminated(l, m) => {
+                        eprint("{file}:{l}: *** {m}.  Stop.")
+                        return parse
+                    },
                     Refuse(l, msg) => {
                         (mut db.refusals).push(Refusal { kind: msg, line: l })
                         line_num += 1
@@ -1632,8 +1655,8 @@ fn print_database(db: Database, v: Vars, makefile: str) -> !int {
             val
         } else {
             expand(v, val, line) else |e| match e {
-                Unterminated(l) => {
-                    eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                Unterminated(l, m) => {
+                    eprint("{makefile}:{l}: *** {m}.  Stop.")
                     return 2
                 },
                 Cycle(l, n) => {

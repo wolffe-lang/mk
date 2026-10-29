@@ -337,8 +337,8 @@ fn parse_and_build(
         return parse
     }
     let g = build_graph(db, v, primary_file) else |e| match e {
-        Unterminated(l) => {
-            eprint("{primary_file}:{l}: *** unterminated variable reference.  Stop.")
+        Unterminated(l, m) => {
+            eprint("{primary_file}:{l}: *** {m}.  Stop.")
             return parse
         },
         Cycle(l, n) => {

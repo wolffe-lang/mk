@@ -149,7 +149,7 @@ fn join_words(words: List[str]) -> str {
 /// Evaluate a text function. `inside` is the whole expanded reference text
 /// (name and arguments); `name` is its first word.
 fn call_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> str ! {
-    Unterminated(int),
+    Unterminated(int, str),
     Cycle(int, str),
     Refuse(int, str),
 } {
@@ -573,7 +573,7 @@ fn wildcard_words(patterns: List[str]) -> List[str] {
 /// chosen branch; `or` expands its arguments in order and answers the
 /// first non-empty one; `and` answers the last if none is empty, else "".
 fn call_lazy_function(v: Vars, name: str, inside: str, visiting: str, line: int) -> str ! {
-    Unterminated(int),
+    Unterminated(int, str),
     Cycle(int, str),
     Refuse(int, str),
 } {

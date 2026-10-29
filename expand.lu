@@ -11,29 +11,46 @@
 //!   filter, filter-out, sort, word, wordlist, words, firstword, lastword, dir,
 //!   notdir, suffix, basename, addsuffix, addprefix, join, wildcard, realpath,
 //!   abspath, if, or, and, intcmp, foreach, file, call, eval, shell, info, let).
-//! - Unterminated reference error: expand returns {Unterminated(int)} with the line
+//! - Unterminated reference error: expand returns {Unterminated(int, str)} with the line
 //! - Recursive self-reference error: expand returns {Cycle(int)} with the line
 //! - Function refusal: expand returns {Refuse(int, str)} with the line and message
 
 /// Expand a string, resolving variable references.
-/// Returns {Unterminated(int)} if a $( or ${ is not closed, carrying the line number.
+/// Returns {Unterminated(int, str)} if a $( or ${ is not closed, carrying the line number.
 /// Returns {Cycle(int, str)} if a variable references itself recursively,
 /// carrying the line number and the name of the variable that closed the cycle.
 /// Returns {Refuse(int, str)} if a gmake function is encountered,
 /// carrying the line number and the refusal message.
 fn expand(v: Vars, s: str, line: int) -> str ! {
-    Unterminated(int),
+    Unterminated(int, str),
     Cycle(int, str),
     Refuse(int, str),
 } {
     expand_inner(v, s, "", line)
 }
 
+/// gmake's words for an unclosed `$(` or `${`: a call to a function names the
+/// function and the missing close; anything else is a variable reference.
+fn unterminated_message(rest: str, close: str) -> str {
+    var n = 0
+    while n < rest.len && rest[n..n + 1] != " " && rest[n..n + 1] != "\t" {
+        n += 1
+    }
+    let name = rest[0..n]
+    let named = is_text_function(name) ||
+        is_gmake_function(name) ||
+        lazy_function_name(rest).len > 0
+    if n < rest.len && named {
+        return "unterminated call to function '{name}': missing '{close}'"
+    }
+    "unterminated variable reference"
+}
+
 /// Expand with a visiting set for cycle detection.
 /// The `visiting` string contains names currently being expanded,
 /// separated by newlines, to detect recursive self-references.
 fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
-    Unterminated(int),
+    Unterminated(int, str),
     Cycle(int, str),
     Refuse(int, str),
 } {
@@ -56,7 +73,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 // $(...) — find matching close paren
                 let rest = s[i + 2..]
                 let found = balanced_close(rest, "(", ")") else {
-                    return Unterminated(line)
+                    return Unterminated(line, unterminated_message(rest, ")"))
                 }
                 let inside = rest[0..found]
                 let lazy = lazy_function_name(inside)
@@ -68,7 +85,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                         visiting,
                         line,
                     ) else |e| match e {
-                        Unterminated(l) => return Unterminated(l),
+                        Unterminated(l, m) => return Unterminated(l, m),
                         Cycle(l, n) => return Cycle(l, n),
                         Refuse(l, msg) => return Refuse(l, msg),
                     }
@@ -78,7 +95,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 }
                 // Expand the inside first (computed names)
                 let expanded_inside = expand_inner(v, inside, visiting, line) else |e| match e {
-                    Unterminated(l) => return Unterminated(l),
+                    Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),
                 }
@@ -89,7 +106,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                     visiting,
                     line,
                 ) else |e| match e {
-                    Unterminated(l) => return Unterminated(l),
+                    Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),
                 }
@@ -108,7 +125,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                             visiting,
                             line,
                         ) else |e| match e {
-                            Unterminated(l) => return Unterminated(l),
+                            Unterminated(l, m) => return Unterminated(l, m),
                             Cycle(l, n) => return Cycle(l, n),
                             Refuse(l, msg) => return Refuse(l, msg),
                         }
@@ -119,7 +136,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                         }
                         // Not a known function; treat as a variable name with spaces
                         let val = expand_var(v, expanded_inside, visiting) else |e| match e {
-                            Unterminated(l) => return Unterminated(l),
+                            Unterminated(l, m) => return Unterminated(l, m),
                             Cycle(l, n) => return Cycle(l, n),
                             Refuse(l, msg) => return Refuse(l, msg),
                         }
@@ -128,7 +145,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 } else {
                     // Simple variable reference
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
-                        Unterminated(l) => return Unterminated(l),
+                        Unterminated(l, m) => return Unterminated(l, m),
                         Cycle(l, n) => return Cycle(l, n),
                         Refuse(l, msg) => return Refuse(l, msg),
                     }
@@ -141,7 +158,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 // ${...} — find matching close brace
                 let rest = s[i + 2..]
                 let found = balanced_close(rest, "{{", "}}") else {
-                    return Unterminated(line)
+                    return Unterminated(line, unterminated_message(rest, "}}"))
                 }
                 let inside = rest[0..found]
                 let lazy = lazy_function_name(inside)
@@ -153,7 +170,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                         visiting,
                         line,
                     ) else |e| match e {
-                        Unterminated(l) => return Unterminated(l),
+                        Unterminated(l, m) => return Unterminated(l, m),
                         Cycle(l, n) => return Cycle(l, n),
                         Refuse(l, msg) => return Refuse(l, msg),
                     }
@@ -163,7 +180,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                 }
                 // Expand the inside first (computed names)
                 let expanded_inside = expand_inner(v, inside, visiting, line) else |e| match e {
-                    Unterminated(l) => return Unterminated(l),
+                    Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),
                 }
@@ -174,7 +191,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                     visiting,
                     line,
                 ) else |e| match e {
-                    Unterminated(l) => return Unterminated(l),
+                    Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),
                 }
@@ -193,7 +210,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                             visiting,
                             line,
                         ) else |e| match e {
-                            Unterminated(l) => return Unterminated(l),
+                            Unterminated(l, m) => return Unterminated(l, m),
                             Cycle(l, n) => return Cycle(l, n),
                             Refuse(l, msg) => return Refuse(l, msg),
                         }
@@ -204,7 +221,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                         }
                         // Not a known function; treat as a variable name with spaces
                         let val = expand_var(v, expanded_inside, visiting) else |e| match e {
-                            Unterminated(l) => return Unterminated(l),
+                            Unterminated(l, m) => return Unterminated(l, m),
                             Cycle(l, n) => return Cycle(l, n),
                             Refuse(l, msg) => return Refuse(l, msg),
                         }
@@ -212,7 +229,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
                     }
                 } else {
                     let val = expand_var(v, expanded_inside, visiting) else |e| match e {
-                        Unterminated(l) => return Unterminated(l),
+                        Unterminated(l, m) => return Unterminated(l, m),
                         Cycle(l, n) => return Cycle(l, n),
                         Refuse(l, msg) => return Refuse(l, msg),
                     }
@@ -224,7 +241,7 @@ fn expand_inner(v: Vars, s: str, visiting: str, line: int) -> str ! {
             // $x — single character variable reference
             if is_var_char(next) {
                 let val = expand_var(v, next, visiting) else |e| match e {
-                    Unterminated(l) => return Unterminated(l),
+                    Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),
                 }
@@ -324,7 +341,7 @@ fn is_gmake_function(name: str) -> bool {
 /// carrying the line number and the name of the variable that closed the cycle.
 /// Returns {Refuse(int, str)} if a gmake function is encountered in the value.
 fn expand_var(v: Vars, name: str, visiting: str) -> str ! {
-    Unterminated(int),
+    Unterminated(int, str),
     Cycle(int, str),
     Refuse(int, str),
 } {
@@ -352,7 +369,7 @@ fn expand_var(v: Vars, name: str, visiting: str) -> str ! {
     // Expand the value with the updated visiting set
     let new_visiting = "{visiting}{name}\n"
     let expanded = expand_inner(v, raw, new_visiting, var_line) else |e| match e {
-        Unterminated(l) => return Unterminated(l),
+        Unterminated(l, m) => return Unterminated(l, m),
         Cycle(l, n) => return Cycle(l, n),
         Refuse(l, msg) => return Refuse(l, msg),
     }
@@ -362,7 +379,7 @@ fn expand_var(v: Vars, name: str, visiting: str) -> str ! {
 /// Try to apply a substitution reference.
 /// Returns the result if it's a substitution, or "" if it's not.
 fn try_substitution(v: Vars, inside: str, visiting: str, line: int) -> str ! {
-    Unterminated(int),
+    Unterminated(int, str),
     Cycle(int, str),
     Refuse(int, str),
 } {
@@ -379,7 +396,7 @@ fn try_substitution(v: Vars, inside: str, visiting: str, line: int) -> str ! {
                 let pattern = rest[0..eq_pos]
                 let replacement = rest[eq_pos + 1..]
                 let val = expand_var(v, var_name, visiting) else |e| match e {
-                    Unterminated(l) => return Unterminated(l),
+                    Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),
                 }
@@ -392,7 +409,7 @@ fn try_substitution(v: Vars, inside: str, visiting: str, line: int) -> str ! {
                 let from = rest[0..eq_pos]
                 let to = rest[eq_pos + 1..]
                 let val = expand_var(v, var_name, visiting) else |e| match e {
-                    Unterminated(l) => return Unterminated(l),
+                    Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),
                 }

@@ -160,8 +160,8 @@ fn build_target(
         set_var(mut rv, "^", all_prereqs, ":=", recipe_line_num)
         set_var(mut rv, "?", newer_prereqs_str, ":=", recipe_line_num)
         let expanded = expand(rv, recipe_line, recipe_line_num) else |e| match e {
-            Unterminated(l) => {
-                eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+            Unterminated(l, m) => {
+                eprint("{makefile}:{l}: *** {m}.  Stop.")
                 return BuildResult {
                     name: name,
                     success: false,
@@ -347,8 +347,8 @@ fn build_recursive(
                 let recipe_line = node.recipe[ri]
                 let recipe_line_num = node.first_recipe_line + ri
                 let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
-                    Unterminated(l) => {
-                        eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                    Unterminated(l, m) => {
+                        eprint("{makefile}:{l}: *** {m}.  Stop.")
                         return BuildResult {
                             name: name,
                             success: false,
@@ -904,8 +904,8 @@ fn build_goals_parallel(
                     let recipe_line = node.recipe[ri]
                     let recipe_line_num = node.first_recipe_line + ri
                     let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
-                        Unterminated(l) => {
-                            eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                        Unterminated(l, m) => {
+                            eprint("{makefile}:{l}: *** {m}.  Stop.")
                             return 2
                         },
                         Cycle(l, n) => {
@@ -979,8 +979,8 @@ fn build_goals_parallel(
                 let recipe_line = node.recipe[ri]
                 let recipe_line_num = node.first_recipe_line + ri
                 let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
-                    Unterminated(l) => {
-                        eprint("{makefile}:{l}: *** unterminated variable reference.  Stop.")
+                    Unterminated(l, m) => {
+                        eprint("{makefile}:{l}: *** {m}.  Stop.")
                         return 2
                     },
                     Cycle(l, n) => {

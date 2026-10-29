@@ -608,3 +608,24 @@ fn test_function_shell() {
         "!= is the shell assignment, not a name ending in !",
     )
 }
+
+fn test_unterminated_messages() {
+    assert(
+        unterminated_message("subst a,b,abc", ")") ==
+            "unterminated call to function 'subst': missing ')'",
+        "an unclosed call names its function and the missing close",
+    )
+    assert(
+        unterminated_message("foreach v,a b,$(v)", ")") ==
+            "unterminated call to function 'foreach': missing ')'",
+        "a lazy function is a function too",
+    )
+    assert(
+        unterminated_message("Y", ")") == "unterminated variable reference",
+        "a variable is a reference",
+    )
+    assert(
+        unterminated_message("subst", ")") == "unterminated variable reference",
+        "a function name with no argument is a variable",
+    )
+}
