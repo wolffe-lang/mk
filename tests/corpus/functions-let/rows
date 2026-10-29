@@ -1,0 +1,13 @@
+# functions-let: measured on GNU make 4.4.1
+remainder -f remainder.mk
+short -f short.mk
+empty -f empty.mk
+no-names -f no-names.mk
+scope -f scope.mk
+nested -f nested.mk
+expanded -f expanded.mk
+dollars -f dollars.mk
+arity -f arity.mk
+lazy -f lazy.mk
+whitespace -f whitespace.mk
+metadata -f metadata.mk

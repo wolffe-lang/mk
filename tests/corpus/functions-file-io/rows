@@ -1,0 +1,16 @@
+# functions-file-io: file names and contents checked by same_as_make; no cleanup
+write-read -f write-read.mk
+empty -f empty.mk
+missing -f missing.mk
+bad-parent -f bad.mk
+invalid -f sp.mk
+spaces -f spaces.mk
+commas -f commas.mk
+read-extra -f read-extra.mk
+blank -f blank.mk
+newline -f newline.mk
+result -f result.mk
+recipe -f recipe.mk
+recursive -f recursive.mk
+conditional -f conditional.mk
+read-tail -f read-tail.mk
