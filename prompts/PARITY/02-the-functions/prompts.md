@@ -102,6 +102,8 @@ shell (`/bin/sh: … unexpected EOF`) where gmake stops with `FILE:LINE: *** unt
 
 ### P2.7 — `eval`, `let`, `file`
 
+**Split 2026-10-29:** P2.7a (`sessions/P2.7a-let-and-file.md`) is `let` and `file`; P2.7b is `eval`. Measured on gmake 4.4.1: a missing `$(file <name)` is EMPTY with exit 0, not an error (the paragraph below is wrong there; the measurement wins).
+
 `$(eval text)` parses `text` as makefile lines in place (the one-pass reader gets an entry point that reads from a string
 at the current line: `parse_makefile`'s loop over `Line`s is the reuse — give it a source that is a string with a base line
 number); variables and rules defined that way exist from then on. `$(let a b rest,1 2 3 4,$(a)-$(b)-$(rest))` → `1-2-3 4`
