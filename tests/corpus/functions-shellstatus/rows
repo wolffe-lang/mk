@@ -1,0 +1,10 @@
+# functions-shellstatus: measured on GNU make 4.4.1
+initial -f initial.mk
+simple -f simple.mk
+bang -f bang.mk
+recursive -f recursive.mk
+signal -f signal.mk
+output -f output.mk
+recipe -f recipe.mk
+lazy -f lazy.mk
+metadata -f metadata.mk
