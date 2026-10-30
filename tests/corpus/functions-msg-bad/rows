@@ -2,3 +2,13 @@
 read -f read.mk
 recipe -f recipe.mk
 eager -f eager.mk
+assignment -f assignment.mk
+simple -f simple.mk
+export -f export.mk
+override -f override.mk
+bang -f bang.mk
+word -f word.mk
+include -f include.mk
+optional -f optional.mk
+optional-top -f optional-top.mk
+include-open -f include-open.mk
