@@ -36,7 +36,7 @@ fi
 
 # Collect all unique directory names from the matrix
 ALL_DIRS="$STANDARD"
-for dir in fail missing cycle wide diamond refuse functions vars divergences; do
+for dir in fail missing cycle wide diamond refuse vars divergences; do
     ALL_DIRS="$ALL_DIRS $dir"
 done
 # Deduplicate
@@ -74,7 +74,6 @@ C1 cycle
 J1 wide
 J2 diamond
 R1 refuse
-R1 functions
 P1 vars"
 for rows in "$CORPUS_DIR"/*/rows; do
     d=$(basename "$(dirname "$rows")")
@@ -100,7 +99,6 @@ R $d $local_env $line"
 done
 MATRIX="$MATRIX
 RJ refuse
-RJ functions
 E1 wide"
 
 # Count expected rows (trim leading newline first)

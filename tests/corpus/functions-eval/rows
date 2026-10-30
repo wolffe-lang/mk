@@ -1,0 +1,37 @@
+# functions-eval: measured on GNU make 4.4.1
+flavours -f flavours.mk
+rule -f rule.mk
+goal -f rule.mk out.txt
+template -f template.mk
+template-all -f template.mk all
+accumulate -f accumulate.mk
+define -f define.mk
+conditional -f conditional.mk
+nested -f nested.mk
+empty -f empty.mk
+lazy -f lazy.mk
+recipe -f recipe.mk
+recipe-dry -f recipe.mk -n
+recipe-later -f recipe-later.mk
+recipe-jobs -f recipe-later.mk -j 2
+recipe-status -f recipe-status.mk later
+recipe-rule -f recipe-rule.mk
+recipe-order -f recipe-order.mk
+separator -f separator.mk
+error -f error.mk
+recipe-lines -f recipe-lines.mk
+warnings -f warnings.mk
+open-if -f open-if.mk
+open-define -f open-define.mk
+unterminated -f unterminated.mk
+top-level -f top-level.mk
+assign -f assign.mk
+recipe-separator -f recipe-separator.mk
+phony -f phony.mk
+assign-rule -f assign-rule.mk
+cli -f cli.mk X=cli Y=cli
+include -f include.mk
+export -f export.mk
+manual -f manual.mk
+manual-dry -f manual.mk -n
+define-body -f define-body.mk

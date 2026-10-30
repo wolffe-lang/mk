@@ -1,0 +1,3 @@
+$(eval define X)
+all:
+	@:
