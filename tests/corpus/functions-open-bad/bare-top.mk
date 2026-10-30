@@ -1,0 +1,3 @@
+$(info
+all:
+	@echo x

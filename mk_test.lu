@@ -627,8 +627,17 @@ fn test_unterminated_messages() {
         "a variable is a reference",
     )
     assert(
-        unterminated_message("subst", ")") == "unterminated variable reference",
-        "a function name with no argument is a variable",
+        unterminated_message("subst", ")") == "unterminated call to function 'subst': missing ')'",
+        "a function name with nothing after it is still a call (gmake 4.4.1)",
+    )
+    assert(
+        unterminated_message("foreach", "}}") ==
+            "unterminated call to function 'foreach': missing '}}'",
+        "a lazy function name with nothing after it is a call too",
+    )
+    assert(
+        unterminated_message("wordx", ")") == "unterminated variable reference",
+        "a name that is not a function is a reference",
     )
 }
 
@@ -693,8 +702,10 @@ fn test_let_errors() {
         "let arity is fatal",
     )
     assert(
-        !is_gmake_function("let") && !is_gmake_function("file") && !is_gmake_function("eval"),
-        "let, file and eval are not refused",
+        lazy_function_name("let a,b,c") == "let" &&
+            lazy_function_name("file >x") == "file" &&
+            is_text_function("eval"),
+        "let, file and eval are functions",
     )
     assert(
         check_refusal("X := $(let a,b,$(file >x,$(a)))") == "",
@@ -863,7 +874,7 @@ fn test_eval_errors() {
         _ => "wrong error",
     }
     assert(rule == "5:prerequisites cannot be defined in recipes", "no rule after the reader")
-    assert(!is_gmake_function("eval") && is_text_function("eval"), "eval is a function now")
+    assert(is_text_function("eval"), "eval is a function now")
     let open = unterminated_message("eval A := 1", ")")
     assert(open == "unterminated call to function 'eval': missing ')'", "an open eval is named")
 }

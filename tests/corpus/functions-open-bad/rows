@@ -8,3 +8,9 @@ brace -f brace.mk
 nested -f nested.mk
 bang -f bang.mk
 foreach -f foreach.mk
+bare -f bare.mk
+bare-space -f bare-space.mk
+bare-brace -f bare-brace.mk
+bare-lazy -f bare-lazy.mk
+bare-top -f bare-top.mk
+bare-recipe -f bare-recipe.mk
