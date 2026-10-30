@@ -35,6 +35,7 @@
 - A variable in a rule's target list names each of its words as a target (`$(PROGRAMS):`), and none when it is empty
 - An unclosed call with nothing after the function's name (`Y := $(word` at the end of a line) names the function, as gmake does
 - A fatal error in an assignment (`Y := $(error HELLO)`, with `export` or `override`, in `!=`, a bad `word` index, an unclosed call) stops the reader at once with gmake's `FILE:LINE: *** … .  Stop.`, an included file's too; an error inside a `-include`d or `sinclude`d file is not forgiven, only a missing file is
+- `define NAME !=` runs its body as one shell command line (gmake joins the body's lines with spaces) and stores the output as a recursive variable, setting `.SHELLSTATUS`; the variable was named `NAME !` and stayed empty
 
 ## 0.3.1 (2026-10-26)
 

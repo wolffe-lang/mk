@@ -462,19 +462,23 @@ fn parse_define(line: str, line_num: int) -> Define ! {none} {
         "+="
     } else if rest.contains("?=") {
         "?="
+    } else if rest.contains("!=") {
+        "!="
     } else if rest.contains("=") {
         "="
     } else {
         "="
     }
     // Extract the name
-    let name = if op == "=" || op == ":=" || op == "+=" || op == "?=" {
+    let name = if op == "=" || op == ":=" || op == "+=" || op == "?=" || op == "!=" {
         let eq_pos = if op == ":=" {
             rest.find(":=") else 0
         } else if op == "+=" {
             rest.find("+=") else 0
         } else if op == "?=" {
             rest.find("?=") else 0
+        } else if op == "!=" {
+            rest.find("!=") else 0
         } else {
             rest.find("=") else 0
         }
@@ -1002,6 +1006,17 @@ fn parse_lines(
                     },
                 }
                 set_var(mut v, top.name, expanded, "=immediate", top.line)
+            } else if top.op == "!=" {
+                // gmake runs the body as one command line: its newlines become spaces
+                let command = replace_all(top.value, "\n", " ")
+                set_var_checked(mut v, top.name, command, "!=", top.line) else |e| match e {
+                    Unterminated(l, m) => {
+                        return Parse(ParseErr { file: file, line: l, message: m })
+                    },
+                    Refuse(l, msg) => {
+                        return Parse(ParseErr { file: file, line: l, message: msg[4..msg.len] })
+                    },
+                }
             } else {
                 // Recursive expansion (store the value as-is)
                 set_var(mut v, top.name, top.value, top.op, top.line)

@@ -917,3 +917,25 @@ fn test_fatal_assignment_stops() {
     assert(got == "f.mk:2: HELLO", "a fatal error in := stops the reader with gmake's line")
     assert(var_defined(v, "A") && !var_defined(v, "Z"), "nothing after it is read")
 }
+
+fn test_define_shell() {
+    let blank = Define { name: "", op: "", value: "", line: 0 }
+    let d = parse_define("define X !=", 3) else copy blank
+    assert(d.name == "X" && d.op == "!=", "define X != is the shell operator")
+    let g = parse_define("define X!=", 3) else blank
+    assert(g.name == "X" && g.op == "!=", "glued to the name too")
+    var v = new_vars()
+    let empty = Map[str, int]()
+    let text = "define X !=\necho a\necho b\nendef\n"
+    let _db = parse_makefile(
+        text,
+        "f.mk",
+        mut v,
+        empty,
+        List[str](),
+        false,
+        empty,
+    ) else new_database()
+    assert(var_value(v, "X") == "a echo b", "the body is one command line")
+    assert(var_flavour(v, "X") == "=", "the output is stored recursive")
+}
