@@ -99,7 +99,8 @@ R $d $local_env $line"
 done
 MATRIX="$MATRIX
 RJ refuse
-E1 wide"
+E1 wide
+VR wide"
 
 # Count expected rows (trim leading newline first)
 EXPECTED=$(echo "$MATRIX" | tail -n +2 | wc -l)
@@ -158,6 +159,7 @@ run_test() {
         P1) test_p1 "$copy" "$dir" ;;
         RJ) test_rj "$copy" "$dir" ;;
         E1) test_e1 "$copy" "$dir" ;;
+        VR) test_vr "$copy" "$dir" ;;
     esac
 
     # Clean up the copy
@@ -487,6 +489,23 @@ test_e1() {
         PASS=$((PASS + 1))
     else
         echo "FAIL: E1 $dir"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# VR: --version names the VERSION file's version and the wolf these gates run with
+test_vr() {
+    local copy="$1" dir="$2"
+    local wolf_version want got
+    wolf_version=$(wolf --version 2>/dev/null | awk 'NR == 1 {print $2}') || wolf_version=missing
+    want="mk $(cat "$ROOT/VERSION") (tested with wolf $wolf_version)"
+    got=$("$ROOT/mk" --version 2>&1 </dev/null) || true
+    if [ "$got" = "$want" ]; then
+        echo "ok VR $dir"
+        PASS=$((PASS + 1))
+    else
+        echo "  VR: mk --version printed: $got; want: $want"
+        echo "FAIL: VR $dir"
         FAIL=$((FAIL + 1))
     fi
 }
