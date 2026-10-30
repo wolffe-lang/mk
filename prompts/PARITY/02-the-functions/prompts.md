@@ -120,3 +120,18 @@ CHANGELOG `## Unreleased` → `## 0.4.0 (date)`; `VERSION` in main.lu → `0.4.0
 fresh clone, the four gates; `./mk --version` → `mk 0.4.0 (built with wolf …)`; `git log --oneline | head -20`.
 Stop for the judge (the reviewer re-runs the 182-probe battery — the 36 `Track 02` refusals must become parity — and
 their own function matrix).
+
+### After P2.7b — divergences measured on gmake 4.4.1 and not yet fixed (candidates for later sessions)
+Found by P2.7b's author (2026-10-29) while measuring `$(eval)`; each is mk against gmake, none has a row yet:
+- `$(warning)`, `$(error)` or `$(eval)` inside a recursive variable reports the variable's definition line, not the line being expanded.
+- `Y := $(error boom)` prints `mk: f:1: *** boom` after the whole parse instead of `f:1: *** boom.  Stop.` at once.
+- An included `+=` applies twice (`[top inc inc]`).
+- Rule prerequisites are expanded after reading: `X := 1`, `t: $(X)`, `X := 2` builds `2` in mk, `1` in gmake.
+- A tab line before the first target is silently ignored; gmake: `recipe commences before first target`.
+- Nested conditionals inside a branch not taken are evaluated as live.
+- A `#` inside `$(…)` on a line is taken as a comment.
+- A stray `endif` says `missing 'endif'`; gmake: `extraneous 'endif'`.
+- `define` bodies lose blank lines and `#` lines.
+- Under `-n`/`-j`, `.SHELLSTATUS` does not carry across one target's recipe lines (the serial path matches gmake).
+- `export X = a:=b` takes the first operator (the bug P2.7b fixed in `parse_assignment`).
+P2.7b keeps one named difference in the README: `$(eval)` inside an `ifeq`/`ifdef` condition or a rule line runs on a copy of the variables.
