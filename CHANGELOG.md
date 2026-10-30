@@ -23,12 +23,17 @@
 - `.SHELLSTATUS` records the last `shell` or `!=` exit status, with override origin and simple flavor; recursive and lazy calls expose it later in the same expansion, and a signal reports 128 plus its number
 - an unclosed `$( ` or `${` stops as gmake does — `unterminated call to function 'NAME': missing ')'` for a function, `unterminated variable reference` otherwise — at read time through `:=`, `!=` and a top-level call, and before a recipe's first line runs
 
+### Changed
+
+- No function is refused: the `functions are not supported` refusal and the name list behind it (`is_gmake_function`) are deleted
+
 ### Fixed
 
 - A pattern without `%` in `patsubst` and substitution references matches a whole word
 - A `define` body keeps its recipe lines, its directives and a nested `define … endef` as text, and a `define` in a branch not taken is dropped
 - An assignment's operator is the one at its first `=` (`L = $(eval X := 1)` is a recursive `L`)
 - A variable in a rule's target list names each of its words as a target (`$(PROGRAMS):`), and none when it is empty
+- An unclosed call with nothing after the function's name (`Y := $(word` at the end of a line) names the function, as gmake does
 
 ## 0.3.1 (2026-10-26)
 

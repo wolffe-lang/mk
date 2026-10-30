@@ -6,21 +6,18 @@
 //! - $(NAME) and ${NAME} with balanced parens/braces
 //! - Computed names: $(A$(B)) reads variable AB's value when B is B
 //! - Substitution references: $(VAR:.c=.o) and $(VAR:%.c=%.o)
-//! - Function calls: $(foo bar) → refused with "functions are not supported"
-//!   for every gmake function name (error, subst, patsubst, strip, findstring,
-//!   filter, filter-out, sort, word, wordlist, words, firstword, lastword, dir,
-//!   notdir, suffix, basename, addsuffix, addprefix, join, wildcard, realpath,
-//!   abspath, if, or, and, intcmp, foreach, file, call, eval, shell, info, let).
+//! - Function calls: $(name args) for every GNU make 4.4.1 function (functions.lu)
 //! - Unterminated reference error: expand returns {Unterminated(int, str)} with the line
 //! - Recursive self-reference error: expand returns {Cycle(int)} with the line
-//! - Function refusal: expand returns {Refuse(int, str)} with the line and message
+//! - A function's fatal error: expand returns {Refuse(int, str)} with the line and
+//!   gmake's "*** …" message
 
 /// Expand a string, resolving variable references.
 /// Returns {Unterminated(int, str)} if a $( or ${ is not closed, carrying the line number.
 /// Returns {Cycle(int, str)} if a variable references itself recursively,
 /// carrying the line number and the name of the variable that closed the cycle.
-/// Returns {Refuse(int, str)} if a gmake function is encountered,
-/// carrying the line number and the refusal message.
+/// Returns {Refuse(int, str)} if a function stops with gmake's fatal error,
+/// carrying the line number and the "*** …" message.
 struct ShellStatus {
     last: int,
 }
@@ -78,10 +75,9 @@ fn unterminated_message(rest: str, close: str) -> str {
         n += 1
     }
     let name = rest[0..n]
-    let named = is_text_function(name) ||
-        is_gmake_function(name) ||
-        lazy_function_name(rest).len > 0
-    if n < rest.len && named {
+    // gmake names the function even when nothing follows its name
+    let named = is_text_function(name) || lazy_function_name(name + " ").len > 0
+    if named {
         return "unterminated call to function '{name}': missing '{close}'"
     }
     "unterminated variable reference"
@@ -181,9 +177,6 @@ fn expand_inner(mut st: ShellStatus, mut v: Vars, s: str, visiting: str, line: i
                         }
                         result = result + fval
                     } else {
-                        if is_gmake_function(first_word) {
-                            return Refuse(line, "functions are not supported")
-                        }
                         // Not a known function; treat as a variable name with spaces
                         let val = expand_var(
                             mut st,
@@ -285,9 +278,6 @@ fn expand_inner(mut st: ShellStatus, mut v: Vars, s: str, visiting: str, line: i
                         }
                         result = result + fval
                     } else {
-                        if is_gmake_function(first_word) {
-                            return Refuse(line, "functions are not supported")
-                        }
                         // Not a known function; treat as a variable name with spaces
                         let val = expand_var(
                             mut st,
@@ -389,27 +379,10 @@ fn is_var_char(c: str) -> bool {
     return false
 }
 
-/// Check if a name is a gmake function that mk does not implement.
-/// These are refused with "functions are not supported" from expand_inner,
-/// so the refusal comes from the expander (every $(…) passes here), not
-/// from check_refusal's line scan.
-fn is_gmake_function(name: str) -> bool {
-    // The complete list of gmake functions mk does not implement.
-    // patsubst and filter formerly said "pattern rules are not supported";
-    // the function name is the refusal, the % inside its arguments is not a pattern rule.
-    if name == "word" {
-        return true
-    }
-    if name == "wordlist" {
-        return true
-    }
-    return false
-}
-
 /// Expand a variable reference, with cycle detection.
 /// Returns the expanded value, or {Cycle(int, str)} if a cycle is detected,
 /// carrying the line number and the name of the variable that closed the cycle.
-/// Returns {Refuse(int, str)} if a gmake function is encountered in the value.
+/// Returns {Refuse(int, str)} if a function in the value stops with a fatal error.
 fn expand_var(mut st: ShellStatus, mut v: Vars, name: str, visiting: str) -> str ! {
     Unterminated(int, str),
     Cycle(int, str),

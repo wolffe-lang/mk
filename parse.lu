@@ -1253,20 +1253,12 @@ fn parse_lines(
                                         line_number,
                                     ) else |e| match e {
                                         Refuse(l, msg) => {
-                                            if msg.starts_with("*** ") {
-                                                // gmake's $(error …) at read time: fatal, nothing after it is read
-                                                return Parse(ParseErr {
-                                                    file: file,
-                                                    line: l,
-                                                    message: msg[4..msg.len],
-                                                })
-                                            }
-                                            (mut db.refusals).push(Refusal {
-                                                kind: msg,
+                                            // gmake's $(error …) at read time: fatal, nothing after it is read
+                                            return Parse(ParseErr {
+                                                file: file,
                                                 line: l,
+                                                message: msg[4..msg.len],
                                             })
-                                            line_num += 1
-                                            continue
                                         },
                                         Unterminated(l, m) => {
                                             return Parse(ParseErr {

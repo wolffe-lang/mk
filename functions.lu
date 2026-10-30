@@ -345,7 +345,8 @@ fn call_function(
         }
         return join_words(out)
     }
-    Refuse(line, "functions are not supported")
+    // every name is_text_function answers is handled above
+    ""
 }
 
 /// One pattern against one word: `%` matches any text (possibly empty);
