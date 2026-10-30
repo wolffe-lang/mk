@@ -321,44 +321,20 @@ fn unsupported_special_target(line: str) -> str {
 
 /// Parse an assignment line. Returns the assignment, or empty if it's not an assignment.
 fn parse_assignment(line: str, line_num: int) -> Assignment ! {none} {
-    // Check for :=, =, ?=, +=
-    // The operator is the first occurrence of :=, ?=, or +=, or a bare = not preceded by : or ?
-    var op = ""
-    var op_pos = -1
-
-    // Check for := first
-    let colon_eq = line.find(":=") else 0
-    if colon_eq > 0 {
-        op = ":="
-        op_pos = colon_eq
-    } else {
-        // Check for ?=
-        let qmark_eq = line.find("?=") else 0
-        if qmark_eq > 0 {
-            op = "?="
-            op_pos = qmark_eq
-        } else {
-            // Check for +=
-            let plus_eq = line.find("+=") else 0
-            if plus_eq > 0 {
-                op = "+="
-                op_pos = plus_eq
-            } else {
-                // Check for bare =
-                let eq = line.find("=") else 0
-                if eq > 1 && line[eq - 1..eq] == "!" {
-                    // gmake's shell assignment: `V != cmd`
-                    op = "!="
-                    op_pos = eq - 1
-                } else if eq > 0 {
-                    // Make sure it's not part of :=, ?=, or +=
-                    op = "="
-                    op_pos = eq
-                } else {
-                    return none
-                }
-            }
-        }
+    // The operator is the one at the first `=`: `:=`, `?=`, `+=`, `!=` or a
+    // bare `=` (so `L = $(eval X := 1)` is a recursive L, as gmake reads it)
+    let eq = line.find("=") else {
+        return none
+    }
+    if eq == 0 {
+        return none
+    }
+    var op = "="
+    var op_pos = eq
+    let before = line[eq - 1..eq]
+    if before == ":" || before == "?" || before == "+" || before == "!" {
+        op = before + "="
+        op_pos = eq - 1
     }
 
     // The name is everything before the operator, trimmed
@@ -728,7 +704,22 @@ fn parse_makefile(
     env_wins: bool,
     env_names: Map[str, int],
 ) -> Database ! {parse, Parse(ParseErr), io} {
-    var db = Database {
+    v.cli_names = copy cli_names
+    v.env_names = copy env_names
+    v.env_wins = env_wins
+    v.reading = true
+    let logical_lines = join_continuations(text.lines())
+    // An open conditional is reported on the line after the last one
+    var end_line = 1
+    if logical_lines.len > 0 {
+        end_line = logical_lines[logical_lines.len - 1].line + 1
+    }
+    parse_lines(logical_lines, end_line, file, mut v, cli_names, include_dirs, env_wins, env_names)
+}
+
+/// An empty database.
+fn new_database() -> Database {
+    Database {
         assignments: List[Assignment](),
         rules: List[Rule](),
         phonies: List[Phony](),
@@ -737,12 +728,21 @@ fn parse_makefile(
         refusals: List[Refusal](),
         included_files: List[IncludedFile](),
     }
+}
 
-    // Split into lines
-    let lines = text.lines()
-
-    // Join continuations
-    let logical_lines = join_continuations(lines)
+/// Read logical lines into a database; $(eval …) reads its text here too.
+/// `end_line` is where an open conditional is reported.
+fn parse_lines(
+    logical_lines: List[Line],
+    end_line: int,
+    file: str,
+    mut v: Vars,
+    cli_names: Map[str, int],
+    include_dirs: List[str],
+    env_wins: bool,
+    env_names: Map[str, int],
+) -> Database ! {parse, Parse(ParseErr), io} {
+    var db = new_database()
 
     // Process each logical line
     var line_num = 0
@@ -758,9 +758,34 @@ fn parse_makefile(
     var cond_stack = List[CondEntry]()
     // Define stack: each entry tracks the define directive and accumulated body
     var define_stack = List[Define]()
+    // define … endef pairs nested inside a define body (they are body text)
+    var define_depth = 0
     while line_num < logical_lines.len {
+        // What a $(eval …) on the line before defined comes first
+        merge_evaluated(mut db, mut v)
         let line = logical_lines[line_num].text
         let line_number = logical_lines[line_num].line
+        // Inside a define every non-blank line is body text, recipe lines and
+        // directives included, until the endef that closes it
+        let word = line.trim()
+        if define_stack.len > 0 && word.len > 0 && !(word == "endef" && define_depth == 0) {
+            if word.starts_with("define ") || word.starts_with("override define ") {
+                define_depth += 1
+            }
+            if word == "endef" {
+                define_depth -= 1
+            }
+            let top_idx = define_stack.len - 1
+            var top = define_stack[top_idx]
+            if top.value.len > 0 {
+                top.value = top.value + "\n" + line
+            } else {
+                top.value = line
+            }
+            define_stack[top_idx] = top
+            line_num += 1
+            continue
+        }
 
         // Check for recipe lines (start with tab)
         if line.starts_with("\t") {
@@ -952,6 +977,11 @@ fn parse_makefile(
             // Get the last element (the one being popped)
             var top = define_stack[define_stack.len - 1]
             define_stack = tmp
+            // A define in a branch not taken is read and dropped
+            if cond_stack.len > 0 && !cond_stack[cond_stack.len - 1].live {
+                line_num += 1
+                continue
+            }
             // Apply the define to the variable table
             if top.op == ":=" {
                 // Immediate expansion
@@ -1194,21 +1224,6 @@ fn parse_makefile(
         }
         // If not live, skip this line
         if !is_live {
-            line_num += 1
-            continue
-        }
-
-        // If we're inside a define block, accumulate the line as body text
-        if define_stack.len > 0 {
-            // Append the line to the current define's body
-            let top_idx = define_stack.len - 1
-            var top = define_stack[top_idx]
-            if top.value.len > 0 {
-                top.value = top.value + "\n" + line
-            } else {
-                top.value = line
-            }
-            define_stack[top_idx] = top
             line_num += 1
             continue
         }
@@ -1478,6 +1493,7 @@ fn parse_makefile(
         line_num += 1
     }
 
+    merge_evaluated(mut db, mut v)
     // Save the last rule if any
     if has_rule {
         (mut db.rules).push(current_rule)
@@ -1485,9 +1501,7 @@ fn parse_makefile(
 
     // Check for open conditionals (missing endif)
     if cond_stack.len > 0 {
-        // The error line is the last line + 1
-        let last_line = logical_lines[logical_lines.len - 1].line
-        eprint("{file}:{last_line + 1}: *** missing 'endif'.  Stop.")
+        eprint("{file}:{end_line}: *** missing 'endif'.  Stop.")
         return parse
     }
 
@@ -1500,6 +1514,71 @@ fn parse_makefile(
     }
 
     return db
+}
+
+/// Append every list of `more` to `db`.
+fn append_database(mut db: Database, more: Database) {
+    for a in more.assignments {
+        (mut db.assignments).push(a)
+    }
+    for r in more.rules {
+        (mut db.rules).push(r)
+    }
+    for p in more.phonies {
+        (mut db.phonies).push(p)
+    }
+    for i in more.includes {
+        (mut db.includes).push(i)
+    }
+    for d in more.defines {
+        (mut db.defines).push(d)
+    }
+    for r in more.refusals {
+        (mut db.refusals).push(r)
+    }
+    for f in more.included_files {
+        (mut db.included_files).push(f)
+    }
+}
+
+/// Move what $(eval …) read into the database, in reading order. Its
+/// variables are already set; the assignments are kept for -p.
+fn merge_evaluated(mut db: Database, mut v: Vars) {
+    append_database(mut db, v.evaluated)
+    v.evaluated = new_database()
+}
+
+/// $(eval TEXT) at LINE: read TEXT as makefile lines now. gmake 4.4.1
+/// reports every one of them at LINE (a recipe's later lines count on from
+/// it). Variables are set at once; rules wait in `v.evaluated` for the
+/// reader. In a recipe, eval may set variables but define no rule.
+fn eval_text(mut v: Vars, text: str, line: int) -> () ! {
+    Unterminated(int, str),
+    Cycle(int, str),
+    Refuse(int, str),
+} {
+    var lines = List[Line]()
+    for l in join_continuations(text.lines()) {
+        (mut lines).push(Line { text: l.text, line: line })
+    }
+    let cli = copy v.cli_names
+    let envs = copy v.env_names
+    let wins = v.env_wins
+    let file = current_makefile(v)
+    let empty = List[str]()
+    let sub = parse_lines(lines, line, file, mut v, cli, empty, wins, envs) else |e| match e {
+        Parse(p) => return Unterminated(p.line, p.message),
+        parse => {
+            // the reader printed gmake's fatal line already
+            os_exit(2)
+            return Unterminated(line, "")
+        },
+        io => return Unterminated(line, "read error"),
+    }
+    if !v.reading && (sub.rules.len > 0 || sub.phonies.len > 0) {
+        return Unterminated(line, "prerequisites cannot be defined in recipes")
+    }
+    append_database(mut v.evaluated, sub)
 }
 
 /// Read a Makefile from a file and parse it.
@@ -1598,6 +1677,8 @@ fn parse_makefile_files(
             (mut db.included_files).push(f)
         }
     }
+    // From here on a $(eval …) runs in a recipe
+    v.reading = false
     return db
 }
 

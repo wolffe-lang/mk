@@ -124,7 +124,7 @@ fn contains_make_ref(line: str) -> bool {
 /// Build a single target's recipe. Returns the result.
 fn build_target(
     g: Graph,
-    v: Vars,
+    mut v: Vars,
     name: str,
     silent: bool,
     built: Map[str, int],
@@ -149,16 +149,17 @@ fn build_target(
     // gmake expands every line of a recipe before it runs the first one, so an
     // $(error …) on line 3 fires before line 1's command runs.
     var expanded_lines = List[str]()
+    // The automatic variables are set in one copy of the table for the whole
+    // recipe, so a $(eval …) on one line is seen by the next
+    var rv = copy v
+    set_var(mut rv, "@", name, ":=", node.first_recipe_line)
+    set_var(mut rv, "<", first_prereq, ":=", node.first_recipe_line)
+    set_var(mut rv, "^", all_prereqs, ":=", node.first_recipe_line)
+    set_var(mut rv, "?", newer_prereqs_str, ":=", node.first_recipe_line)
     var i = 0
     while i < node.recipe.len {
         let recipe_line = node.recipe[i]
         let recipe_line_num = node.first_recipe_line + i
-        // Set automatic variables in a copy of the table for this recipe
-        var rv = copy v
-        set_var(mut rv, "@", name, ":=", recipe_line_num)
-        set_var(mut rv, "<", first_prereq, ":=", recipe_line_num)
-        set_var(mut rv, "^", all_prereqs, ":=", recipe_line_num)
-        set_var(mut rv, "?", newer_prereqs_str, ":=", recipe_line_num)
         let expanded = expand_store(mut rv, recipe_line, recipe_line_num) else |e| match e {
             Unterminated(l, m) => {
                 eprint("{makefile}:{l}: *** {m}.  Stop.")
@@ -194,6 +195,13 @@ fn build_target(
         (mut expanded_lines).push(final_line)
         i += 1
     }
+    // What a $(eval …) set stays for the targets after this one
+    restore_var(mut rv, v, "@")
+    restore_var(mut rv, v, "<")
+    restore_var(mut rv, v, "^")
+    restore_var(mut rv, v, "?")
+    restore_var(mut rv, v, ".SHELLSTATUS")
+    v = rv
     i = 0
     while i < expanded_lines.len {
         let recipe_line_num = node.first_recipe_line + i
@@ -253,7 +261,7 @@ fn build_target(
 /// Build a target and its prerequisites recursively (serial mode).
 fn build_recursive(
     g: Graph,
-    v: Vars,
+    mut v: Vars,
     name: str,
     silent: bool,
     dry_run: bool,
@@ -310,7 +318,7 @@ fn build_recursive(
     for p in node.prereqs {
         let result = build_recursive(
             g,
-            v,
+            mut v,
             p,
             silent,
             dry_run,
@@ -346,7 +354,7 @@ fn build_recursive(
             while ri < node.recipe.len {
                 let recipe_line = node.recipe[ri]
                 let recipe_line_num = node.first_recipe_line + ri
-                let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
+                let expanded = expand_recipe(mut v, recipe_line, recipe_line_num) else |e| match e {
                     Unterminated(l, m) => {
                         eprint("{makefile}:{l}: *** {m}.  Stop.")
                         return BuildResult {
@@ -448,7 +456,7 @@ fn build_recursive(
         map.set(mut built, name, 0)
         return BuildResult { name: name, success: true, exit_code: 0, prereq_failed: false }
     }
-    let result = build_target(g, v, name, silent, built, makefile, makelevel)
+    let result = build_target(g, mut v, name, silent, built, makefile, makelevel)
     if result.success {
         map.set(mut built, name, 1)
     }
@@ -562,7 +570,7 @@ fn prereqs_done(g: Graph, name: str, built: Map[str, int]) -> bool {
 /// Build the goals. Returns the exit code.
 fn build_goals(
     g: Graph,
-    v: Vars,
+    mut v: Vars,
     mut goals: List[str],
     silent: bool,
     dry_run: bool,
@@ -582,16 +590,26 @@ fn build_goals(
     }
     // Serial mode: use DFS recursion
     if jobs == 1 {
-        return build_goals_serial(g, v, goals, silent, dry_run, keep_going, makefile, makelevel)
+        return build_goals_serial(g, mut v, goals, silent, dry_run, keep_going, makefile, makelevel)
     }
     // Parallel mode: use ready queue. jobs == 0 means no limit.
-    return build_goals_parallel(g, v, goals, silent, dry_run, keep_going, jobs, makefile, makelevel)
+    return build_goals_parallel(
+        g,
+        mut v,
+        goals,
+        silent,
+        dry_run,
+        keep_going,
+        jobs,
+        makefile,
+        makelevel,
+    )
 }
 
 /// Serial build using DFS recursion.
 fn build_goals_serial(
     g: Graph,
-    v: Vars,
+    mut v: Vars,
     goals: List[str],
     silent: bool,
     dry_run: bool,
@@ -608,7 +626,7 @@ fn build_goals_serial(
         }
         let result = build_recursive(
             g,
-            v,
+            mut v,
             goal,
             silent,
             dry_run,
@@ -640,7 +658,7 @@ fn build_goals_serial(
 /// Parallel build using ready queue and process.start/poll.
 fn build_goals_parallel(
     g: Graph,
-    v: Vars,
+    mut v: Vars,
     goals: List[str],
     silent: bool,
     dry_run: bool,
@@ -903,7 +921,11 @@ fn build_goals_parallel(
                 while ri < node.recipe.len {
                     let recipe_line = node.recipe[ri]
                     let recipe_line_num = node.first_recipe_line + ri
-                    let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
+                    let expanded = expand_recipe(
+                        mut v,
+                        recipe_line,
+                        recipe_line_num,
+                    ) else |e| match e {
                         Unterminated(l, m) => {
                             eprint("{makefile}:{l}: *** {m}.  Stop.")
                             return 2
@@ -978,7 +1000,7 @@ fn build_goals_parallel(
             while ri < node.recipe.len {
                 let recipe_line = node.recipe[ri]
                 let recipe_line_num = node.first_recipe_line + ri
-                let expanded = expand(v, recipe_line, recipe_line_num) else |e| match e {
+                let expanded = expand_recipe(mut v, recipe_line, recipe_line_num) else |e| match e {
                     Unterminated(l, m) => {
                         eprint("{makefile}:{l}: *** {m}.  Stop.")
                         return 2

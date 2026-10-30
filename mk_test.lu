@@ -693,8 +693,8 @@ fn test_let_errors() {
         "let arity is fatal",
     )
     assert(
-        !is_gmake_function("let") && !is_gmake_function("file") && is_gmake_function("eval"),
-        "eval stays refused",
+        !is_gmake_function("let") && !is_gmake_function("file") && !is_gmake_function("eval"),
+        "let, file and eval are not refused",
     )
     assert(
         check_refusal("X := $(let a,b,$(file >x,$(a)))") == "",
@@ -790,4 +790,94 @@ fn test_let_distribution() {
         (expand(v, "$(let a b,  1   2  3  ,[$(b)])", 1) else "error") == "[2  3  ]",
         "preserve tail whitespace",
     )
+}
+
+fn test_eval_assignments() {
+    var v = new_vars()
+    let out = expand_store(
+        mut v,
+        "$(eval A = 1)$(eval B := $(A)2)$(eval A = 9)[$(A)$(B)]",
+        1,
+    ) else "error"
+    assert(out == "[912]", "eval is immediate within one expansion")
+    assert(var_flavour(v, "A") == "=" && var_flavour(v, "B") == ":=", "recursive and simple")
+    let acc = expand_store(mut v, "$(foreach x,a b c,$(eval ALL := $(ALL) $(x)))", 2) else "error"
+    assert(acc == "" && var_value(v, "ALL") == "a b c", "foreach carries eval out")
+    assert(!var_defined(v, "x"), "foreach restores its variable")
+}
+
+fn test_eval_read_only_copy() {
+    let v = new_vars()
+    let out = expand(v, "$(eval X := 1)$(X)", 1) else "error"
+    assert(out == "1" && !var_defined(v, "X"), "a read-only expansion keeps eval in its copy")
+    let a = parse_assignment_ok("L = $(eval X := 1)", 1)
+    assert(
+        a.name == "L" && a.op == "=" && a.value == "$(eval X := 1)",
+        "the operator is at the first =",
+    )
+}
+
+fn test_eval_rules() {
+    let db = parse_makefile_ok("a:\ndefine R\nb: c\n\t@echo $$@\nendef\n$(eval $(R))\nd:\n")
+    assert(db.rules.len == 3, "three rules")
+    assert(
+        db.rules[1].targets[0] == "b" && db.rules[2].targets[0] == "d",
+        "the eval'd rule in reading order",
+    )
+    assert(
+        db.rules[1].recipe.len == 1 && db.rules[1].recipe[0] == "@echo $@",
+        "recipe from the body",
+    )
+    assert(
+        db.rules[1].line == 6 && db.rules[1].first_recipe_line == 6,
+        "reported at the eval's line",
+    )
+}
+
+fn test_define_keeps_body_text() {
+    var v = new_vars()
+    let text = "define T\nifeq (a,b)\nX := 1\nendif\n\t@echo hi\ndefine IN\nendef\nendef\n"
+    let _db = parse_makefile(
+        text,
+        "Makefile",
+        mut v,
+        Map[str, int](),
+        List[str](),
+        false,
+        Map[str, int](),
+    ) else new_database()
+    let body = "ifeq (a,b)\nX := 1\nendif\n\t@echo hi\ndefine IN\nendef"
+    assert(var_value(v, "T") == body, "directives, recipe lines and a nested define are text")
+    assert(!var_defined(v, "X") && !var_defined(v, "IN"), "nothing in the body runs")
+}
+
+fn test_eval_errors() {
+    var v = new_vars()
+    let sep = expand_store(mut v, "$(eval X)", 4) else |e| match e {
+        Unterminated(l, m) => "{l}:{m}",
+        _ => "wrong error",
+    }
+    assert(sep == "4:missing separator", "a bad line stops at the eval's line")
+    let rule = expand_store(mut v, "$(eval y: z)", 5) else |e| match e {
+        Unterminated(l, m) => "{l}:{m}",
+        _ => "wrong error",
+    }
+    assert(rule == "5:prerequisites cannot be defined in recipes", "no rule after the reader")
+    assert(!is_gmake_function("eval") && is_text_function("eval"), "eval is a function now")
+    let open = unterminated_message("eval A := 1", ")")
+    assert(open == "unterminated call to function 'eval': missing ')'", "an open eval is named")
+}
+
+fn test_eval_call_let_nested() {
+    var v = new_vars()
+    set_var(mut v, "T", "$(1)_V := $(2)", "=", 1)
+    let out = expand_store(
+        mut v,
+        "$(eval $(call T,a,one))$(eval $$(eval N := deep))[$(a_V)][$(N)]",
+        2,
+    ) else "error"
+    assert(out == "[one][deep]", "a call template and a nested eval")
+    assert(!var_defined(v, "0") && !var_defined(v, "1"), "call restores its arguments")
+    let in_let = expand_store(mut v, "$(let q,1,$(eval L := $(q)))[$(L)]", 3) else "error"
+    assert(in_let == "[1]" && !var_defined(v, "q"), "let carries eval out and restores its names")
 }

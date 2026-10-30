@@ -38,6 +38,14 @@ struct Vars {
     export_all: bool,
     // Names that were explicitly unexported
     unexported: List[str],
+    // The reader's options, kept for $(eval …), which reads makefile text
+    cli_names: Map[str, int],
+    env_names: Map[str, int],
+    env_wins: bool,
+    // True while the makefiles are read; false while recipes are expanded
+    reading: bool,
+    // What $(eval …) read that the reader has not merged yet (rules, .PHONY, …)
+    evaluated: Database,
 }
 
 /// Create a new empty variable table.
@@ -46,6 +54,11 @@ fn new_vars() -> Vars {
         table: Map[str, Var](),
         export_all: false,
         unexported: List[str](),
+        cli_names: Map[str, int](),
+        env_names: Map[str, int](),
+        env_wins: false,
+        reading: false,
+        evaluated: new_database(),
     }
 }
 

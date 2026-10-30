@@ -41,18 +41,33 @@ fn expand_status(v: Vars, s: str, line: int) -> (str, int) ! {
     Refuse(int, str),
 } {
     var st = ShellStatus { last: -1 }
-    let out = expand_inner(mut st, v, s, "", line)?
+    var w = copy v
+    let out = expand_inner(mut st, mut w, s, "", line)?
     (out, st.last)
 }
 
+/// Expand in the caller's own table, so what a $(eval …) defines stays.
 fn expand_store(mut v: Vars, s: str, line: int) -> str ! {
     Unterminated(int, str),
     Cycle(int, str),
     Refuse(int, str),
 } {
-    let (out, status) = expand_status(v, s, line)?
-    store_shell_status(mut v, status, line)
+    var st = ShellStatus { last: -1 }
+    let out = expand_inner(mut st, mut v, s, "", line)?
+    store_shell_status(mut v, st.last, line)
     out
+}
+
+/// A recipe line under -n or -j: expanded in the table itself, so what a
+/// $(eval …) sets stays for the lines and targets after it; .SHELLSTATUS
+/// is not kept.
+fn expand_recipe(mut v: Vars, s: str, line: int) -> str ! {
+    Unterminated(int, str),
+    Cycle(int, str),
+    Refuse(int, str),
+} {
+    var st = ShellStatus { last: -1 }
+    expand_inner(mut st, mut v, s, "", line)
 }
 
 /// gmake's words for an unclosed `$(` or `${`: a call to a function names the
@@ -75,7 +90,7 @@ fn unterminated_message(rest: str, close: str) -> str {
 /// Expand with a visiting set for cycle detection.
 /// The `visiting` string contains names currently being expanded,
 /// separated by newlines, to detect recursive self-references.
-fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) -> str ! {
+fn expand_inner(mut st: ShellStatus, mut v: Vars, s: str, visiting: str, line: int) -> str ! {
     Unterminated(int, str),
     Cycle(int, str),
     Refuse(int, str),
@@ -106,7 +121,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                 if lazy.len > 0 {
                     let lval = call_lazy_function(
                         mut st,
-                        v,
+                        mut v,
                         lazy,
                         inside,
                         visiting,
@@ -123,7 +138,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                 // Expand the inside first (computed names)
                 let expanded_inside = expand_inner(
                     mut st,
-                    v,
+                    mut v,
                     inside,
                     visiting,
                     line,
@@ -135,7 +150,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                 // Check for substitution reference: $(VAR:.c=.o) or $(VAR:%.c=%.o)
                 let sub_result = try_substitution(
                     mut st,
-                    v,
+                    mut v,
                     expanded_inside,
                     visiting,
                     line,
@@ -154,7 +169,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                     if is_text_function(first_word) {
                         let fval = call_function(
                             mut st,
-                            v,
+                            mut v,
                             first_word,
                             expanded_inside,
                             visiting,
@@ -172,7 +187,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                         // Not a known function; treat as a variable name with spaces
                         let val = expand_var(
                             mut st,
-                            v,
+                            mut v,
                             expanded_inside,
                             visiting,
                         ) else |e| match e {
@@ -184,7 +199,12 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                     }
                 } else {
                     // Simple variable reference
-                    let val = expand_var(mut st, v, expanded_inside, visiting) else |e| match e {
+                    let val = expand_var(
+                        mut st,
+                        mut v,
+                        expanded_inside,
+                        visiting,
+                    ) else |e| match e {
                         Unterminated(l, m) => return Unterminated(l, m),
                         Cycle(l, n) => return Cycle(l, n),
                         Refuse(l, msg) => return Refuse(l, msg),
@@ -205,7 +225,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                 if lazy.len > 0 {
                     let lval = call_lazy_function(
                         mut st,
-                        v,
+                        mut v,
                         lazy,
                         inside,
                         visiting,
@@ -222,7 +242,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                 // Expand the inside first (computed names)
                 let expanded_inside = expand_inner(
                     mut st,
-                    v,
+                    mut v,
                     inside,
                     visiting,
                     line,
@@ -234,7 +254,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                 // Check for substitution reference
                 let sub_result = try_substitution(
                     mut st,
-                    v,
+                    mut v,
                     expanded_inside,
                     visiting,
                     line,
@@ -253,7 +273,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                     if is_text_function(first_word) {
                         let fval = call_function(
                             mut st,
-                            v,
+                            mut v,
                             first_word,
                             expanded_inside,
                             visiting,
@@ -271,7 +291,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                         // Not a known function; treat as a variable name with spaces
                         let val = expand_var(
                             mut st,
-                            v,
+                            mut v,
                             expanded_inside,
                             visiting,
                         ) else |e| match e {
@@ -282,7 +302,12 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
                         result = result + val
                     }
                 } else {
-                    let val = expand_var(mut st, v, expanded_inside, visiting) else |e| match e {
+                    let val = expand_var(
+                        mut st,
+                        mut v,
+                        expanded_inside,
+                        visiting,
+                    ) else |e| match e {
                         Unterminated(l, m) => return Unterminated(l, m),
                         Cycle(l, n) => return Cycle(l, n),
                         Refuse(l, msg) => return Refuse(l, msg),
@@ -294,7 +319,7 @@ fn expand_inner(mut st: ShellStatus, v: Vars, s: str, visiting: str, line: int) 
             }
             // $x — single character variable reference
             if is_var_char(next) {
-                let val = expand_var(mut st, v, next, visiting) else |e| match e {
+                let val = expand_var(mut st, mut v, next, visiting) else |e| match e {
                     Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),
@@ -378,9 +403,6 @@ fn is_gmake_function(name: str) -> bool {
     if name == "wordlist" {
         return true
     }
-    if name == "eval" {
-        return true
-    }
     return false
 }
 
@@ -388,7 +410,7 @@ fn is_gmake_function(name: str) -> bool {
 /// Returns the expanded value, or {Cycle(int, str)} if a cycle is detected,
 /// carrying the line number and the name of the variable that closed the cycle.
 /// Returns {Refuse(int, str)} if a gmake function is encountered in the value.
-fn expand_var(mut st: ShellStatus, v: Vars, name: str, visiting: str) -> str ! {
+fn expand_var(mut st: ShellStatus, mut v: Vars, name: str, visiting: str) -> str ! {
     Unterminated(int, str),
     Cycle(int, str),
     Refuse(int, str),
@@ -419,7 +441,7 @@ fn expand_var(mut st: ShellStatus, v: Vars, name: str, visiting: str) -> str ! {
     }
     // Expand the value with the updated visiting set
     let new_visiting = "{visiting}{name}\n"
-    let expanded = expand_inner(mut st, v, raw, new_visiting, var_line) else |e| match e {
+    let expanded = expand_inner(mut st, mut v, raw, new_visiting, var_line) else |e| match e {
         Unterminated(l, m) => return Unterminated(l, m),
         Cycle(l, n) => return Cycle(l, n),
         Refuse(l, msg) => return Refuse(l, msg),
@@ -429,11 +451,13 @@ fn expand_var(mut st: ShellStatus, v: Vars, name: str, visiting: str) -> str ! {
 
 /// Try to apply a substitution reference.
 /// Returns the result if it's a substitution, or "" if it's not.
-fn try_substitution(mut st: ShellStatus, v: Vars, inside: str, visiting: str, line: int) -> str ! {
-    Unterminated(int, str),
-    Cycle(int, str),
-    Refuse(int, str),
-} {
+fn try_substitution(
+    mut st: ShellStatus,
+    mut v: Vars,
+    inside: str,
+    visiting: str,
+    line: int,
+) -> str ! {Unterminated(int, str), Cycle(int, str), Refuse(int, str)} {
     // Check for : form: $(VAR:.c=.o)
     let colon_pos = inside.find(":") else 0
     if colon_pos > 0 {
@@ -446,7 +470,7 @@ fn try_substitution(mut st: ShellStatus, v: Vars, inside: str, visiting: str, li
             if eq_pos > 0 {
                 let pattern = rest[0..eq_pos]
                 let replacement = rest[eq_pos + 1..]
-                let val = expand_var(mut st, v, var_name, visiting) else |e| match e {
+                let val = expand_var(mut st, mut v, var_name, visiting) else |e| match e {
                     Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),
@@ -459,7 +483,7 @@ fn try_substitution(mut st: ShellStatus, v: Vars, inside: str, visiting: str, li
             if eq_pos > 0 {
                 let from = rest[0..eq_pos]
                 let to = rest[eq_pos + 1..]
-                let val = expand_var(mut st, v, var_name, visiting) else |e| match e {
+                let val = expand_var(mut st, mut v, var_name, visiting) else |e| match e {
                     Unterminated(l, m) => return Unterminated(l, m),
                     Cycle(l, n) => return Cycle(l, n),
                     Refuse(l, msg) => return Refuse(l, msg),

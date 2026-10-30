@@ -596,7 +596,7 @@ fn run(mut f: Flags) -> int {
                 }
                 let result = build_recursive(
                     g,
-                    v,
+                    mut v,
                     inc.path,
                     f.silent,
                     f.dry_run,
@@ -727,7 +727,7 @@ fn run(mut f: Flags) -> int {
     // Build the goals
     let exit_code = build_goals(
         g,
-        v,
+        mut v,
         mut f.goals,
         f.silent,
         f.dry_run,

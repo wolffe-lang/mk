@@ -73,6 +73,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `.SHELLSTATUS` | `X := $(shell exit 3)` then `$(.SHELLSTATUS)` is `3`, origin `override`, flavor `simple`; a recursive shell's status is visible later in the same expansion |
 | `let` | `$(let a b rest,1 2 3 4,$(a)-$(b)-$(rest))` is `1-2-3 4`; bindings are local, automatic-origin and simple-flavor; the last name keeps the remaining text |
 | `file` | `$(file >out.txt,hello)` overwrites, `>>` appends, `<` reads and drops only the final newline; missing reads and writes return empty; omitted text creates zero bytes, explicit text gains a newline only if needed |
+| `eval` | `$(foreach p,$(PROGS),$(eval $(call T,$(p))))` reads the text as makefile lines at once: a variable it sets is seen by the next reference, its rules join in reading order, every line is reported at the eval's own line; in a recipe it sets variables for the later lines and targets but defines no rule |
 | `include` / `-include` / `sinclude` | `include $(DIR)/x.mk` |
 | `-I DIR` | search DIR for included makefiles |
 | `ifeq` / `ifneq` / `ifdef` / `ifndef` / `else` / `endif` | `ifeq ($(A),$(B))` |
@@ -92,7 +93,6 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
 | `.SUFFIXES` | `.SUFFIXES is not supported` |
 | `|` order-only prerequisites | `order-only prerequisites are not supported` |
 | `::` double-colon rules | `double-colon rules are not supported` |
-| `$(eval …)` | `functions are not supported` |
 
 ## Out-of-date rule
 
@@ -124,6 +124,9 @@ A prerequisite with no rule that does not exist is an error:
   of options; `mk -x` prints its usage; the first line agrees and the E1 row checks it)
 - `$(MAKE)` expands to the literal `mk` (gmake prints its absolute path); this changes
   when wolf 0.2.36's `env_arg0()` lands
+- `$(eval …)` in an `ifeq`/`ifdef` condition, or in a rule's target or prerequisite list,
+  runs on a copy of the variables (mk expands rule lines after reading, gmake while
+  reading), so what it defines does not reach the makefile
 
 ### Divergences from gmake 4.4.1
 

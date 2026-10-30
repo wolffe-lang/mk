@@ -17,6 +17,7 @@
 - `foreach`, `call` (bound in a copy of the table, so nesting restores nothing), `value`, `origin`, `flavor`
 - `info`, `warning`, `error` (a top-level function line is expanded when read; a recipe's lines are all expanded before the first runs), and `MAKECMDGOALS`
 - `shell` and the `!=` assignment (`$(flavor)` of a `!=` variable is `recursive`, as gmake's)
+- `eval` reads its text as makefile lines at once: a variable it sets is seen by the next reference (so `$(foreach x,a b,$(eval L := $(L) $(x)))` accumulates), its rules and `.PHONY` join the database in reading order, every line it reads is reported at the eval's own line, and in a recipe it sets variables for the later lines and targets but defines no rule (`prerequisites cannot be defined in recipes`); `foreach`, `call` and `let` keep what an `eval` inside them did
 - `let` binds expanded words locally (the last name keeps the remaining text), with automatic origin and simple flavor
 - `file` reads, overwrites and appends at expansion time, preserving text commas and spaces; writes return empty, absent reads return empty, omitted text creates an empty file, and explicit text receives a final newline only when needed
 - `.SHELLSTATUS` records the last `shell` or `!=` exit status, with override origin and simple flavor; recursive and lazy calls expose it later in the same expansion, and a signal reports 128 plus its number
@@ -25,6 +26,9 @@
 ### Fixed
 
 - A pattern without `%` in `patsubst` and substitution references matches a whole word
+- A `define` body keeps its recipe lines, its directives and a nested `define … endef` as text, and a `define` in a branch not taken is dropped
+- An assignment's operator is the one at its first `=` (`L = $(eval X := 1)` is a recursive `L`)
+- A variable in a rule's target list names each of its words as a target (`$(PROGRAMS):`), and none when it is empty
 
 ## 0.3.1 (2026-10-26)
 

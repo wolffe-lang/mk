@@ -44,7 +44,7 @@ fn is_text_function(name: str) -> bool {
     if name == "info" || name == "warning" || name == "error" {
         return true
     }
-    if name == "shell" {
+    if name == "shell" || name == "eval" {
         return true
     }
     if name == "words" || name == "firstword" || name == "lastword" {
@@ -153,13 +153,17 @@ fn join_words(words: List[str]) -> str {
 /// (name and arguments); `name` is its first word.
 fn call_function(
     mut st: ShellStatus,
-    v: Vars,
+    mut v: Vars,
     name: str,
     inside: str,
     visiting: str,
     line: int,
 ) -> str ! {Unterminated(int, str), Cycle(int, str), Refuse(int, str)} {
     let args = function_args(inside)
+    if name == "eval" {
+        eval_text(mut v, args, line)?
+        return ""
+    }
     if name == "value" {
         if args.trim() == ".SHELLSTATUS" && st.last >= 0 {
             return "{st.last}"
@@ -593,7 +597,7 @@ fn wildcard_words(patterns: List[str]) -> List[str] {
 /// first non-empty one; `and` answers the last if none is empty, else "".
 fn call_lazy_function(
     mut st: ShellStatus,
-    v: Vars,
+    mut v: Vars,
     name: str,
     inside: str,
     visiting: str,
@@ -602,25 +606,31 @@ fn call_lazy_function(
     let args = function_args(inside)
     if name == "if" {
         let p = split_args(args, 3)
-        let cond = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
+        let cond = expand_inner(mut st, mut v, arg_at(p, 0), visiting, line)?
         let branch = if join_words(split_words(cond)).len > 0 then arg_at(p, 1) else arg_at(p, 2)
-        return expand_inner(mut st, v, branch, visiting, line)?
+        return expand_inner(mut st, mut v, branch, visiting, line)?
     }
     if name == "let" {
         let p = split_args(args, 3)
         if p.len < 3 {
             return Refuse(line, "*** insufficient number of arguments ({p.len}) to function 'let'")
         }
-        let names = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
-        let list = expand_inner(mut st, v, arg_at(p, 1), visiting, line)?
+        let names = expand_inner(mut st, mut v, arg_at(p, 0), visiting, line)?
+        let list = expand_inner(mut st, mut v, arg_at(p, 1), visiting, line)?
         var w = copy v
-        bind_let(mut w, split_words(names), list, line)
-        return expand_inner(mut st, w, arg_at(p, 2), visiting, line)?
+        let bound = split_words(names)
+        bind_let(mut w, bound, list, line)
+        let out = expand_inner(mut st, mut w, arg_at(p, 2), visiting, line)?
+        for n in bound {
+            restore_var(mut w, v, n)
+        }
+        v = w
+        return out
     }
     if name == "file" {
         let p = split_args(args, 2)
-        let operation = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
-        let text = expand_inner(mut st, v, arg_at(p, 1), visiting, line)?
+        let operation = expand_inner(mut st, mut v, arg_at(p, 0), visiting, line)?
+        let text = expand_inner(mut st, mut v, arg_at(p, 1), visiting, line)?
         return file_operation(operation, text, p.len > 1, line)?
     }
     if name == "foreach" {
@@ -631,33 +641,48 @@ fn call_lazy_function(
                 "*** insufficient number of arguments ({p.len}) to function 'foreach'",
             )
         }
-        let var_name = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
-        let list = expand_inner(mut st, v, arg_at(p, 1), visiting, line)?
+        let var_name = expand_inner(mut st, mut v, arg_at(p, 0), visiting, line)?
+        let list = expand_inner(mut st, mut v, arg_at(p, 1), visiting, line)?
         var out = ""
         var w = copy v
         for word in split_words(list) {
             set_var(mut w, var_name, word, ":=", line)
-            let piece = expand_inner(mut st, w, arg_at(p, 2), visiting, line)?
+            let piece = expand_inner(mut st, mut w, arg_at(p, 2), visiting, line)?
             out = if out.len == 0 then piece else out + " " + piece
         }
+        restore_var(mut w, v, var_name)
+        v = w
         return out
     }
     if name == "call" {
         let p = split_args(args, 64)
-        let fn_name = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
+        let fn_name = expand_inner(mut st, mut v, arg_at(p, 0), visiting, line)?
         if fn_name.len == 0 {
             return ""
+        }
+        var values = List[str]()
+        var i = 1
+        while i < p.len {
+            let value = expand_inner(mut st, mut v, arg_at(p, i), visiting, line)?
+            (mut values).push(value)
+            i = i + 1
         }
         let fn_body = var_value(v, fn_name)
         var w = copy v
         set_var(mut w, "0", fn_name, ":=", line)
-        var i = 1
-        while i < p.len {
-            let value = expand_inner(mut st, v, arg_at(p, i), visiting, line)?
-            set_var(mut w, "{i}", value, ":=", line)
+        i = 0
+        while i < values.len {
+            set_var(mut w, "{i + 1}", values[i], ":=", line)
             i = i + 1
         }
-        return expand_inner(mut st, w, fn_body, visiting, line)?
+        let out = expand_inner(mut st, mut w, fn_body, visiting, line)?
+        i = 0
+        while i <= values.len {
+            restore_var(mut w, v, "{i}")
+            i = i + 1
+        }
+        v = w
+        return out
     }
     if name == "intcmp" {
         let p = split_args(args, 5)
@@ -667,8 +692,8 @@ fn call_lazy_function(
                 "*** insufficient number of arguments ({p.len}) to function 'intcmp'",
             )
         }
-        let lhs_text = expand_inner(mut st, v, arg_at(p, 0), visiting, line)?
-        let rhs_text = expand_inner(mut st, v, arg_at(p, 1), visiting, line)?
+        let lhs_text = expand_inner(mut st, mut v, arg_at(p, 0), visiting, line)?
+        let rhs_text = expand_inner(mut st, mut v, arg_at(p, 1), visiting, line)?
         let lhs = int_arg(lhs_text, "first", line)?
         let rhs = int_arg(rhs_text, "second", line)?
         if p.len == 2 {
@@ -683,12 +708,12 @@ fn call_lazy_function(
         } else {
             arg_at(p, 4)
         }
-        return expand_inner(mut st, v, part, visiting, line)?
+        return expand_inner(mut st, mut v, part, visiting, line)?
     }
     let p = split_args(args, 64)
     var last = ""
     for piece in p {
-        let value = expand_inner(mut st, v, piece, visiting, line)?
+        let value = expand_inner(mut st, mut v, piece, visiting, line)?
         if name == "or" {
             if value.len > 0 {
                 return value
@@ -728,6 +753,16 @@ fn bind_let(mut w: Vars, names: List[str], list: str, line: int) {
 
 fn let_space(c: str) -> bool {
     c == " " || c == "\t" || c == "\n" || c == "\r"
+}
+
+/// Put NAME back the way OLD has it (its entry, or none): foreach, call
+/// and let bind in a copy, and what a $(eval …) did in the copy stays.
+fn restore_var(mut w: Vars, old: Vars, name: str) {
+    let prev = map.get(old.table, name) else {
+        let _ = map.remove(mut w.table, name)
+        return
+    }
+    map.set(mut w.table, name, prev)
 }
 
 /// file's first comma separates operation from text; the rest is text.
