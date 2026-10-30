@@ -4,3 +4,10 @@ lazy lazy
 flavor flavor
 rule rule
 err err
+define -f define.mk
+define-flavor -f define-flavor.mk
+define-status -f define-status.mk
+define-lines -f define-lines.mk
+define-glued -f define-glued.mk
+define-expands -f define-expands.mk
+define-recipe -f define-recipe.mk
