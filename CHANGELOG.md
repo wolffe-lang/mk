@@ -34,6 +34,7 @@
 - An assignment's operator is the one at its first `=` (`L = $(eval X := 1)` is a recursive `L`)
 - A variable in a rule's target list names each of its words as a target (`$(PROGRAMS):`), and none when it is empty
 - An unclosed call with nothing after the function's name (`Y := $(word` at the end of a line) names the function, as gmake does
+- A fatal error in an assignment (`Y := $(error HELLO)`, with `export` or `override`, in `!=`, a bad `word` index, an unclosed call) stops the reader at once with gmake's `FILE:LINE: *** … .  Stop.`, an included file's too; an error inside a `-include`d or `sinclude`d file is not forgiven, only a missing file is
 
 ## 0.3.1 (2026-10-26)
 

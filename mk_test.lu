@@ -892,3 +892,28 @@ fn test_eval_call_let_nested() {
     let in_let = expand_store(mut v, "$(let q,1,$(eval L := $(q)))[$(L)]", 3) else "error"
     assert(in_let == "[1]" && !var_defined(v, "q"), "let carries eval out and restores its names")
 }
+
+fn test_fatal_assignment_stops() {
+    var v = new_vars()
+    var got = "no error"
+    let text = "A := 1\nY := $(error HELLO)\nZ := after\n"
+    let empty = Map[str, int]()
+    let _db = parse_makefile(
+        text,
+        "f.mk",
+        mut v,
+        empty,
+        List[str](),
+        false,
+        empty,
+    ) else |e| match e {
+        Parse(p) => {
+            got = "{p.file}:{p.line}: {p.message}"
+            new_database()
+        },
+        parse => new_database(),
+        io => new_database(),
+    }
+    assert(got == "f.mk:2: HELLO", "a fatal error in := stops the reader with gmake's line")
+    assert(var_defined(v, "A") && !var_defined(v, "Z"), "nothing after it is read")
+}

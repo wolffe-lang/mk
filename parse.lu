@@ -1130,14 +1130,12 @@ fn parse_lines(
                     rest[p..].trim()
                 }
                 set_var_checked(mut v, name, value, op, line_number) else |e| match e {
+                    // A fatal error stops the reader at once (an included file's too)
                     Unterminated(l, m) => {
-                        eprint("{file}:{l}: *** {m}.  Stop.")
-                        return parse
+                        return Parse(ParseErr { file: file, line: l, message: m })
                     },
                     Refuse(l, msg) => {
-                        (mut db.refusals).push(Refusal { kind: msg, line: l })
-                        line_num += 1
-                        continue
+                        return Parse(ParseErr { file: file, line: l, message: msg[4..msg.len] })
                     },
                 }
                 // Re-set the exported flag (set_var may have created a new Var)
@@ -1199,14 +1197,12 @@ fn parse_lines(
                 assignment.line,
                 "override",
             ) else |e| match e {
+                // A fatal error stops the reader at once (an included file's too)
                 Unterminated(l, m) => {
-                    eprint("{file}:{l}: *** {m}.  Stop.")
-                    return parse
+                    return Parse(ParseErr { file: file, line: l, message: m })
                 },
                 Refuse(l, msg) => {
-                    (mut db.refusals).push(Refusal { kind: msg, line: l })
-                    line_num += 1
-                    continue
+                    return Parse(ParseErr { file: file, line: l, message: msg[4..msg.len] })
                 },
             }
             // Store the assignment for -p output
@@ -1355,12 +1351,9 @@ fn parse_lines(
                                 continue
                             },
                             Parse(p) => {
-                                if !include.optional {
-                                    eprint("{p.file}:{p.line}: *** {p.message}.  Stop.")
-                                    return parse
-                                }
-                                // Soft include: silent
-                                continue
+                                // -include and sinclude forgive a missing file, not an error in one
+                                eprint("{p.file}:{p.line}: *** {p.message}.  Stop.")
+                                return parse
                             },
                             io => {
                                 // The file could not be read (likely missing).
@@ -1397,8 +1390,8 @@ fn parse_lines(
                                         return parse
                                     },
                                     Refuse(l, msg) => {
-                                        (mut db.refusals).push(Refusal { kind: msg, line: l })
-                                        continue
+                                        eprint("{g}:{l}: {msg}.  Stop.")
+                                        return parse
                                     },
                                 }
                             }
@@ -1470,14 +1463,12 @@ fn parse_lines(
                     assignment.op,
                     assignment.line,
                 ) else |e| match e {
+                    // A fatal error stops the reader at once (an included file's too)
                     Unterminated(l, m) => {
-                        eprint("{file}:{l}: *** {m}.  Stop.")
-                        return parse
+                        return Parse(ParseErr { file: file, line: l, message: m })
                     },
                     Refuse(l, msg) => {
-                        (mut db.refusals).push(Refusal { kind: msg, line: l })
-                        line_num += 1
-                        continue
+                        return Parse(ParseErr { file: file, line: l, message: msg[4..msg.len] })
                     },
                 }
             }
