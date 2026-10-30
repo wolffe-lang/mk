@@ -117,14 +117,14 @@ README. Commits: `rows: eval, let, file (red)`, `functions: eval, let, file`.
 `is_gmake_function` is empty and deleted with the refusal path; the README's *Accepted* table lists every function with one
 example and the *Refused* table has no function row; `./mk --help` re-pasted if it changed; the *Tests* count re-pasted;
 CHANGELOG `## Unreleased` → `## 0.4.0 (date)`; `VERSION` in main.lu → `0.4.0`; commit `Release 0.4.0`. **Verify:** from a
-fresh clone, the four gates; `./mk --version` → `mk 0.4.0 (built with wolf …)`; `git log --oneline | head -20`.
+fresh clone, the four gates; `./mk --version` → `mk 0.4.0 (tested with wolf 0.2.36)` (wolf 0.2.36 cannot embed the builder's version, so the line names the wolf the release was tested with, and test.sh's `VR` row checks it against `VERSION` and `wolf --version`); `git log --oneline | head -20`.
 Stop for the judge (the reviewer re-runs the 182-probe battery — the 36 `Track 02` refusals must become parity — and
 their own function matrix).
 
 ### After P2.7b — divergences measured on gmake 4.4.1 and not yet fixed (candidates for later sessions)
 Found by P2.7b's author (2026-10-29) while measuring `$(eval)`; each is mk against gmake, none has a row yet:
 - `$(warning)`, `$(error)` or `$(eval)` inside a recursive variable reports the variable's definition line, not the line being expanded.
-- `Y := $(error boom)` prints `mk: f:1: *** boom` after the whole parse instead of `f:1: *** boom.  Stop.` at once.
+- ~~`Y := $(error boom)` prints `mk: f:1: *** boom` after the whole parse instead of `f:1: *** boom.  Stop.` at once.~~ Fixed in P2.8.
 - An included `+=` applies twice (`[top inc inc]`).
 - Rule prerequisites are expanded after reading: `X := 1`, `t: $(X)`, `X := 2` builds `2` in mk, `1` in gmake.
 - A tab line before the first target is silently ignored; gmake: `recipe commences before first target`.
@@ -135,3 +135,15 @@ Found by P2.7b's author (2026-10-29) while measuring `$(eval)`; each is mk again
 - Under `-n`/`-j`, `.SHELLSTATUS` does not carry across one target's recipe lines (the serial path matches gmake).
 - `export X = a:=b` takes the first operator (the bug P2.7b fixed in `parse_assignment`).
 P2.7b keeps one named difference in the README: `$(eval)` inside an `ifeq`/`ifdef` condition or a rule line runs on a copy of the variables.
+
+### After P2.8 — found by P2.8's author (2026-10-30), measured on gmake 4.4.1, not fixed (no rows yet)
+- Arity errors: gmake says `insufficient number of arguments (N) to function 'NAME'` for `$(subst a)`, `$(subst a,b)`, `$(patsubst %,b)`, `$(findstring a)`, `$(filter a)`, `$(join a)`, `$(addsuffix a)`, `$(if a)`, `$(word 2)`, `$(word )`, `$(wordlist 1)`, `$(wordlist 1,2)`, `$(wordlist )`; mk returns empty (`[a]` for `join`) or another `invalid … argument`.
+- `$(wordlist 1,0,a)`: gmake `[]`; mk `*** invalid second argument to 'wordlist' function: '0'` (0 is valid as the second argument).
+- A computed function name `$($(W) 2,a b)` with `W := word`: gmake `[]`, mk `[b]`. `$( word 2,a b)`: gmake `[]`, mk errors. `X := $(word$(Y)`: gmake exits 0 silently, mk errors.
+- `X := a` then `X += $(error boom)` (also `export`/`override +=`): gmake stops at line 2; mk keeps `a $(error boom)` and exits 0 (`set_var_impl`'s `+=` branch maps `Refuse` to the raw value).
+- `$(error)` in a `define Y :=` body: gmake reports the `endef` line, mk the `define` line.
+- `$(error)` or an unterminated call inside an `ifeq`/`ifdef`: mk says `invalid syntax in conditional`; gmake prints the error (or the arity error).
+- The include handler takes the reader's `parse` row (message already printed) as a missing file: `-include` of a file with an open `ifeq` prints the error, then builds, exit 0; `$(error)` in a prerequisite list adds a stray `unterminated variable reference`.
+- `override define X =` gives origin `file`; gmake `override` (Track 01).
+- `::=` and `:::=` (assignment and define) are refused as double-colon rules or a missing separator (Track 01).
+- gmake execs simple commands without a shell: `X != printf 'p\nq\n' printf 'r'` writes `printf: missing format character` to stderr in gmake; mk is silent (the sh builtin).
