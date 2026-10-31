@@ -5,13 +5,11 @@
 > reviewer judging each phase and writing the next. Every claim below is pasted from the binary; the test
 > script is the reason to trust it.
 
-A `make` for the plain Makefile subset — targets, prerequisites, recipes, variables,
-automatic variables, mtime-driven rebuilds, `-n`, `-k`, and `-j N` — refusing everything
-else by name. If your Makefile has no pattern rules, no `include`, no `ifeq`, no functions,
-`mk` builds it as GNU make does on the corpus below. `test.sh` compares `mk` against GNU make 4.4.1:
-- on 12 corpus directories: the first and the second run, serially and with `-j 2`, and `-n -j 2`;
-- on their own directories: `-k`, `-s` and a command-line variable;
-- each comparing the output, the exit status and the files written.
+A `make` for a growing part of GNU make — targets, prerequisites, recipes, variables in
+every flavour, automatic variables, mtime-driven rebuilds, `-n`, `-k`, `-j N`, `include`,
+conditionals, `define`, and every GNU make function. What it refuses it names (*Refused*
+below); what it does differently on purpose is under *Known differences*. `test.sh` compares
+`mk` against GNU make 4.4.1 row by row: the output, the exit status and the files written.
 
 The refusals and usage errors are checked by name.
 
@@ -21,12 +19,13 @@ The refusals and usage errors are checked by name.
 wolf build main.lu -o mk
 ```
 
-Requires wolf 0.2.34 (https://github.com/wolffe-lang/wolf-lang) and a POSIX shell.
+Requires wolf (https://github.com/wolffe-lang/wolf-lang) and a POSIX shell; tested with
+wolf 0.2.36, the version `./mk --version` names.
 
 ## Usage
 
 ```
-Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE]... [GOAL]...
+Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [-e] [NAME=VALUE]... [GOAL]...
        mk --help
        mk --version
 
@@ -38,6 +37,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [NAME=VALUE].
   -f FILE    read FILE as the Makefile
   -C DIR     change to DIR before doing anything
   -I DIR     search DIR for included makefiles
+  -e         environment variables override Makefile assignments
   --version  print the version and exit
   NAME=VALUE set a variable from the command line
 ```
@@ -123,7 +123,7 @@ A prerequisite with no rule that does not exist is an error:
 - Usage errors print `mk`'s own option list, not GNU make's (`gmake -x` prints 50 lines
   of options; `mk -x` prints its usage; the first line agrees and the E1 row checks it)
 - `$(MAKE)` expands to the literal `mk` (gmake prints its absolute path); this changes
-  when wolf 0.2.36's `env_arg0()` lands
+  when mk reads its own path with `env_arg0()` (in wolf since 0.2.36)
 - `$(eval …)` in an `ifeq`/`ifdef` condition, or in a rule's target or prerequisite list,
   runs on a copy of the variables (mk expands rule lines after reading, gmake while
   reading), so what it defines does not reach the makefile
@@ -138,8 +138,8 @@ A prerequisite with no rule that does not exist is an error:
 
 ```
 wolf build main.lu -o mk
-wolf test .              # 50 unit tests
-./test.sh                # 172 corpus rows against GNU make
+wolf test .              # 88 unit tests
+./test.sh                # 335 rows against GNU make
 wolf fmt --check *.lu
 ```
 
@@ -147,17 +147,18 @@ wolf fmt --check *.lu
 GNU `gmake` on the same Makefile. A row passes when the two tools agree on the observable
 behaviour (output, exit status and the files written). The oracle is GNU make 4.4.1 beside it.
 
-Each corpus directory carries a `rows` file (one row per line; the first word is the row
-name, the rest are the arguments). A name starting with `again` compares the second run
-of each tool. A copy is cleaned to the directory's git-tracked files. The harness finds
-every `tests/corpus/*/rows` and feeds them into the matrix.
+Each corpus directory but `refuse` carries a `rows` file (one row per line; the first word
+is the row name, the rest are the arguments). A name starting with `again` compares the
+second run of each tool. A copy is cleaned to the directory's git-tracked files. The
+harness finds every `tests/corpus/*/rows` and feeds them into the matrix.
 
-The 172 rows cover 46 directories across 19 test kinds: N1 (dry-run output), B1 (files
-after build), B2 (second run), B3 (build from a subset), F1 (failure with `-k`), M1
-(missing target), C1 (cycle), J1 (wide build), J2 (diamond with `-j`), R1 (refusals),
-P1 (print database), J3 (parallel), U1/U2 (second-run comparison), D1 (dry-run with
-`-j`), K1 (keep-going), S1 (silent), V1 (command-line variables), RJ (refusals under
-`-j`), E1 (usage errors), and R (corpus rows with `same_as_make`).
+The 335 rows cover 62 directories. 295 are R rows, every line of 60 `rows` files compared
+by `same_as_make`; the other 40 are fixed kinds: N1 (dry-run output), B1 (files after
+build) and B2 (second run) on 8 directories each, B3 (build from a subset) on 5, F1
+(failure with `-k`), M1 (missing target), C1 (cycle), J1 (wide build), J2 (diamond with
+`-j`), R1 (refusals) and RJ (refusals under `-j`) on `refuse`, P1 (print database), E1
+(usage errors), VR (`--version` names the `VERSION` file and the wolf the gates run with)
+and D1 (the `divergences` row: mk's answer, not gmake's).
 
 ## Measured numbers
 
@@ -178,7 +179,7 @@ Machine: Apple M5 Pro, macOS, wolf 0.2.34. Date: 2026-10-23.
 | `graph.lu` | Dependency graph, DFS, cycle detection, out-of-date decision |
 | `run.lu` | Scheduler: serial and parallel execution, `-n`/`-s`/`-k` |
 | `mk_test.lu` | Unit tests for the parser and variable flavours |
-| `test.sh` | Corpus tests against GNU make (172 rows) |
+| `test.sh` | Corpus tests against GNU make (335 rows) |
 | `SPEC.md` | The original specification (the prompt that built this) |
 | `CHANGELOG.md` | Version history |
 | `README.md` | this file |

@@ -19,10 +19,13 @@ use std.fs
 use std.str
 use std.map
 
-/// The version string, embedded at build time.
-let VERSION: str = "0.3.1"
+/// The version string, embedded at build time; the VERSION file says the same.
+let VERSION: str = "0.4.0"
 
-let WOLF_VERSION: str = "0.2.34"
+/// The wolf this release was tested with. wolf cannot embed the compiler's own
+/// version at build time, so --version says "tested with"; test.sh's VR row
+/// checks it against the wolf the gates run with.
+let WOLF_VERSION: str = "0.2.36"
 
 /// Build the program-name prefix: `mk:` at level 0, `mk[N]:` at level N > 0.
 fn mk_prefix(level: int) -> str {
@@ -756,7 +759,7 @@ fn main() -> !int {
                 return 0
             },
             version => {
-                print("mk {VERSION} (built with wolf {WOLF_VERSION})")
+                print("mk {VERSION} (tested with wolf {WOLF_VERSION})")
                 return 0
             },
             Parse(p) => {
@@ -784,7 +787,7 @@ fn main() -> !int {
             return 0
         },
         version => {
-            print("mk {VERSION} (built with wolf {WOLF_VERSION})")
+            print("mk {VERSION} (tested with wolf {WOLF_VERSION})")
             return 0
         },
         Parse(p) => {

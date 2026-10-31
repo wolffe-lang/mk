@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-10-30)
 
 ### Added
 
@@ -26,6 +26,7 @@
 ### Changed
 
 - No function is refused: the `functions are not supported` refusal and the name list behind it (`is_gmake_function`) are deleted
+- `mk --version` prints `mk 0.4.0 (tested with wolf 0.2.36)`: wolf cannot embed the compiler's own version, so the line names the wolf the release was tested with; test.sh's VR row checks it, and the `VERSION` file, against the wolf the gates run with (at 0.3.1 they said 0.2.34 and 0.3.0)
 
 ### Fixed
 
