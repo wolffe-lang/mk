@@ -1,0 +1,27 @@
+# rules-semicolon: a recipe after ';' on the rule line (gmake 4.4.1)
+basic -f basic.mk
+prereq -f prereq.mk
+glued -f glued.mk
+glued-prereq -f glued.mk other
+spaced -f spaced.mk
+tabs -f spaced.mk tabs
+targets -f targets.mk
+targets-jobs -f targets.mk -j 2
+auto -f auto.mk
+hash -f hash.mk
+comment-first -f hash.mk other
+chars -f chars.mk
+assign -f assign.mk
+leading -f space.mk
+trailing -f space.mk trail
+continuation -f cont.mk
+continuation-dry -f cont.mk -n
+second-line -f lines.mk
+first-line -f lines.mk first
+ignored -f lines.mk ignore
+plain -f modes.mk
+dry -f modes.mk -n
+silent -f modes.mk -s
+deferred -f deferred.mk
+default-goal -f goals.mk
+named-goal -f goals.mk second
