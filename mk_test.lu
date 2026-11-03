@@ -939,3 +939,35 @@ fn test_define_shell() {
     assert(var_value(v, "X") == "a echo b", "the body is one command line")
     assert(var_flavour(v, "X") == "=", "the output is stored recursive")
 }
+
+fn test_rule_semicolon() {
+    assert(rule_semicolon("all: ; @echo hi") == 5, "the ; after the colon")
+    assert(rule_semicolon("all:;X=1") == 4, "an = after the ; is recipe text")
+    assert(rule_semicolon("X = a ; b") == -1, "a ; in a value is not a recipe")
+    assert(rule_semicolon("t: a # c ; d") == -1, "a ; in a comment is not a recipe")
+    assert(rule_semicolon("t: $(subst a,;,x) ; d") == 18, "a ; inside $(…) is not the recipe's")
+    assert(rule_semicolon("a;b = 1") == -1, "no colon before the ;")
+    assert(rule_semicolon("caf\u{e9}: ; x") == 7, "a multi-byte character is stepped over")
+    assert(strip_comment("all: ; @echo a#b") == "all: ; @echo a#b", "a # in the recipe is kept")
+}
+
+fn test_semicolon_recipe() {
+    var v = new_vars()
+    let empty = Map[str, int]()
+    let text = "all: dep ; @echo [$<] # kept\n\t@echo two\nnone: ;\n"
+    let db = parse_makefile(
+        text,
+        "f.mk",
+        mut v,
+        empty,
+        List[str](),
+        false,
+        empty,
+    ) else new_database()
+    assert(db.rules.len == 2, "two rules")
+    assert(db.rules[0].prereqs.len == 1 && db.rules[0].prereqs[0] == "dep", "; is no prerequisite")
+    assert(db.rules[0].recipe.len == 2, "the recipe after ; and the tab line")
+    assert(db.rules[0].recipe[0] == "@echo [$<] # kept", "the recipe after ; keeps its #")
+    assert(db.rules[0].first_recipe_line == 1, "the recipe starts on the rule's line")
+    assert(db.rules[1].recipe.len == 1 && db.rules[1].recipe[0] == "", "t: ; is an empty recipe")
+}

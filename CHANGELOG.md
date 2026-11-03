@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- A recipe after `;` on the rule line (`all: dep ; @echo $<`): the text after the `;` is the rule's first recipe line, its leading whitespace dropped; a `#` in it is recipe text, not a comment, and a backslash-newline in it stays for the shell. A `;` in a value (`X = a ; b`) or in a comment (`t: p # c ; d`) is not a recipe
+
+### Fixed
+
+- A `;` on a rule line was a prerequisite named `;` (`No rule to make target ';'`); a `|`, `::` or `%` in the recipe after it was refused as an order-only prerequisite, a double-colon rule or a pattern rule; `t:;X=1` was an assignment to a variable named `t:;X`
+
 ## 0.4.0 (2026-10-30)
 
 ### Added

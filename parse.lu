@@ -184,7 +184,13 @@ fn join_continuations(lines: List[str]) -> List[Line] {
             current_line = i + 1
         }
         // Check for trailing backslash
-        if current.ends_with("\\") {
+        if current.ends_with("\\") && rule_semicolon(current) >= 0 {
+            // A recipe after a rule's `;` continues as a recipe line does: the
+            // backslash-newline stays for the shell
+            in_recipe = true
+            in_continuation = true
+            i += 1
+        } else if current.ends_with("\\") {
             // Strip the trailing backslash and any trailing whitespace before it
             current = current[0..current.len - 1].trim_end()
             in_continuation = true
@@ -222,6 +228,11 @@ fn strip_comment(line: str) -> str {
     if idx == 0 {
         return ""
     }
+    // A recipe after a rule's `;` is recipe text: a `#` in it is not a comment
+    let semi = rule_semicolon(line)
+    if semi >= 0 && semi < idx {
+        return line
+    }
     // Check if the `#` is preceded by `\`
     if idx > 0 && line[idx - 1..idx] == "\\" {
         // The `#` is escaped; not a comment start.
@@ -229,6 +240,40 @@ fn strip_comment(line: str) -> str {
         return line[0..idx - 1] + "#" + line[idx + 1..]
     }
     return line[0..idx]
+}
+
+/// The index of the `;` that starts the recipe on a rule line (`t: p ; recipe`),
+/// or -1. The `;` comes after a `:` and before any `=` or `#`, outside `$(…)` and
+/// `${…}`: `X = a ; b` is a value and `t: p # c ; d` a comment.
+fn rule_semicolon(line: str) -> int {
+    var depth = 0
+    var colon = false
+    var i = 0
+    while i < line.len {
+        // a byte inside a multi-byte character is none of these
+        let c = line.get(i..i + 1) else ""
+        if depth > 0 {
+            if c == "(" || c == "{{" {
+                depth += 1
+            } else if c == ")" || c == "}}" {
+                depth -= 1
+            }
+        } else if c == "$" {
+            let next = line.get(i + 1..i + 2) else ""
+            if next == "(" || next == "{{" {
+                depth = 1
+            }
+            i += 1
+        } else if c == "#" || c == "=" {
+            return -1
+        } else if c == ":" {
+            colon = true
+        } else if c == ";" {
+            return if colon then i else -1
+        }
+        i += 1
+    }
+    -1
 }
 
 /// Check if a line is a refusal (pattern rule, include, ifeq, etc.).
@@ -845,8 +890,13 @@ fn parse_lines(
             has_rule = false
         }
 
+        // A recipe can follow a `;` on a rule line: the head before it is the line
+        // the reader reads; the text after it is the rule's first recipe line
+        let semi = rule_semicolon(line)
+        let head = if semi >= 0 then line[0..semi].trim() else stripped
+
         // Check for refusals
-        let refusal = check_refusal(stripped)
+        let refusal = check_refusal(head)
         if refusal.len > 0 {
             (mut db.refusals).push(Refusal {
                 kind: refusal,
@@ -1239,14 +1289,14 @@ fn parse_lines(
             continue
         }
 
-        // Try to parse as assignment
-        let assignment = parse_assignment(stripped, line_number) else |e| match e {
+        // Try to parse as assignment (the head: `t:;X=1` is a rule, not X)
+        let assignment = parse_assignment(head, line_number) else |e| match e {
             none => {
                 // Not an assignment, try as include first (before .PHONY and rule)
                 let include = parse_include(stripped, line_number) else |e4| match e4 {
                     none => {
                         // Not an include, try as .PHONY first (before rule, since .PHONY: looks like a rule)
-                        let phony = parse_phony(stripped, line_number) else |e3| match e3 {
+                        let phony = parse_phony(head, line_number) else |e3| match e3 {
                             none => {
                                 // Not .PHONY, check for .EXPORT_ALL_VARIABLES
                                 if stripped == ".EXPORT_ALL_VARIABLES:" ||
@@ -1257,10 +1307,12 @@ fn parse_lines(
                                 }
                                 // A line that starts with $(…) is a top-level function call,
                                 // not a rule: the : inside $(…) is not a rule separator.
-                                if stripped.starts_with("$(") {
+                                // A recipe after `;` is not expanded here: it is expanded
+                                // when the rule runs.
+                                if head.starts_with("$(") {
                                     let expanded_line = expand_store(
                                         mut v,
-                                        stripped,
+                                        head,
                                         line_number,
                                     ) else |e| match e {
                                         Refuse(l, msg) => {
@@ -1287,7 +1339,7 @@ fn parse_lines(
                                     }
                                 }
                                 // Not a function call, try as rule
-                                let rule = parse_rule(stripped, line_number) else |e2| match e2 {
+                                let rule = parse_rule(head, line_number) else |e2| match e2 {
                                     none => {
                                         // Unknown line: not blank, not a comment, not a recipe line,
                                         // not an assignment, not a rule, not a refusal.
@@ -1299,6 +1351,12 @@ fn parse_lines(
                                     },
                                 }
                                 current_rule = rule
+                                if semi >= 0 {
+                                    // The text after `;` is the first recipe line, its leading
+                                    // whitespace dropped; `t: ;` is an empty recipe, not none
+                                    (mut current_rule.recipe).push(line[semi + 1..].trim_start())
+                                    current_rule.first_recipe_line = line_number
+                                }
                                 has_rule = true
                                 line_num += 1
                                 continue
