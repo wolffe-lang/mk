@@ -162,8 +162,10 @@ fn is_out_of_date(g: Graph, name: str, built: Map[str, int]) -> bool {
         if v < 0 {
             continue
         }
+        // A prerequisite that does not exist once its rule ran (FORCE, with no
+        // recipe and no prerequisites, or a recipe that made no file) is newer
         if !fs.exists(p) {
-            continue
+            return true
         }
         let prereq_mtime = fs.modified_ms(p) else {
             continue
@@ -198,7 +200,9 @@ fn newer_prereqs(g: Graph, name: str, built: Map[str, int]) -> List[str] {
         if v < 0 {
             continue
         }
+        // A prerequisite that does not exist is newer: it is in $?
         if !fs.exists(p) {
+            (mut result).push(p)
             continue
         }
         let prereq_mtime = fs.modified_ms(p) else {

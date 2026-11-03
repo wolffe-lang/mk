@@ -103,7 +103,9 @@ A target is out of date when:
 1. It does not exist, or
 2. Any prerequisite is newer (mtime strictly greater), or
 3. Any prerequisite was rebuilt in this run, or
-4. The target is `.PHONY`
+4. Any prerequisite does not exist once its rule has run (`FORCE:`, a rule with no
+   recipe and no prerequisites, or a recipe that makes no file), or
+5. The target is `.PHONY`
 
 A prerequisite with no rule that does not exist is an error:
 `mk: *** No rule to make target 'missing_file', needed by 'result'.  Stop.`

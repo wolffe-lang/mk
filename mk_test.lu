@@ -992,3 +992,28 @@ fn test_goal_message() {
     assert(goal_message(g, "real", 1) == "mk[1]: 'real' is up to date.", "a recipe")
     assert(goal_message(g, "x.c", 0) == "mk: Nothing to be done for 'x.c'.", "a file with no rule")
 }
+
+fn test_missing_prereq_is_newer() {
+    let target = ".mk-p31-force.txt"
+    fs.write_text(target, "") else { assert(false, "write the target fixture") }
+    var v = new_vars()
+    let empty = Map[str, int]()
+    let text = "{target}: .mk-p31-gone FORCE\n\t@:\nFORCE:\n"
+    let db = parse_makefile(
+        text,
+        "f.mk",
+        mut v,
+        empty,
+        List[str](),
+        false,
+        empty,
+    ) else new_database()
+    let g = build_graph(db, v, "f.mk") else new_graph()
+    let built = Map[str, int]()
+    let stale = is_out_of_date(g, target, built)
+    let newer = newer_prereqs(g, target, built)
+    fs.remove(target) else { assert(false, "remove the target fixture") }
+    assert(stale, "a prerequisite that does not exist makes its target out of date")
+    assert(newer.len == 2 && newer[0] == ".mk-p31-gone" && newer[1] == "FORCE", "and is in $?")
+    assert(!is_out_of_date(g, "FORCE", built), "FORCE itself has nothing to do")
+}

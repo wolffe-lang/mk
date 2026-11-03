@@ -11,6 +11,7 @@
 
 - A `;` on a rule line was a prerequisite named `;` (`No rule to make target ';'`); a `|`, `::` or `%` in the recipe after it was refused as an order-only prerequisite, a double-colon rule or a pattern rule; `t:;X=1` was an assignment to a variable named `t:;X`
 - A goal whose update started no command says what gmake says, under `-n` and `-j` too: `'t' is up to date.` for an empty recipe (mk printed an empty line), `Nothing to be done for 't'.` for a target with no recipe, a phony one or a file with no rule (mk said nothing for a file), and the same again for a goal named twice (mk said `is up to date` even for a target with no recipe, and under `-s`)
+- A prerequisite that does not exist once its rule has run is newer than its target and is in `$?`, as gmake reads it: `out: FORCE` with `FORCE:` (no recipe, no prerequisites) remakes `out` every time; mk said `'out' is up to date.`, and under `-j` a target with no recipe left its dependents unmade
 
 ## 0.4.0 (2026-10-30)
 
