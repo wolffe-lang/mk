@@ -1,0 +1,9 @@
+# rules-force: a target with no recipe and no prerequisites that does not exist is newer than its dependents (gmake 4.4.1)
+force -f force.mk
+force-dry -f force.mk -n
+force-jobs -f force.mk -j 2
+force-dry-jobs -f force.mk -n -j 2
+force-semi -f force.mk semi
+force-goal -f force.mk FORCE
+group -f force.mk final
+group-jobs -f force.mk -j 2 final
