@@ -51,6 +51,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [-e] [NAME=VA
 | rules | `all: prog` |
 | recipes | `\t$(CC) -o $@ $^` (tab-prefixed) |
 | a recipe on the rule line | `all: dep ; @echo $<` (the text after `;` is the first recipe line; a `#` in it is not a comment) |
+| empty recipe | `t: ;` (runs nothing; as a goal, `'t' is up to date.`) |
 | variables (recursive) | `CFLAGS = -O2` |
 | variables (immediate) | `CC := cc` |
 | variables (conditional) | `DEBUG ?= 0` |

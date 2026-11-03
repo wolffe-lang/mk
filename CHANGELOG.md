@@ -5,10 +5,12 @@
 ### Added
 
 - A recipe after `;` on the rule line (`all: dep ; @echo $<`): the text after the `;` is the rule's first recipe line, its leading whitespace dropped; a `#` in it is recipe text, not a comment, and a backslash-newline in it stays for the shell. A `;` in a value (`X = a ; b`) or in a comment (`t: p # c ; d`) is not a recipe
+- An empty recipe (`t: ;`, or recipe lines that expand to nothing) runs nothing and prints nothing, and the target counts as remade
 
 ### Fixed
 
 - A `;` on a rule line was a prerequisite named `;` (`No rule to make target ';'`); a `|`, `::` or `%` in the recipe after it was refused as an order-only prerequisite, a double-colon rule or a pattern rule; `t:;X=1` was an assignment to a variable named `t:;X`
+- A goal whose update started no command says what gmake says, under `-n` and `-j` too: `'t' is up to date.` for an empty recipe (mk printed an empty line), `Nothing to be done for 't'.` for a target with no recipe, a phony one or a file with no rule (mk said nothing for a file), and the same again for a goal named twice (mk said `is up to date` even for a target with no recipe, and under `-s`)
 
 ## 0.4.0 (2026-10-30)
 

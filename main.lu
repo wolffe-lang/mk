@@ -603,7 +603,6 @@ fn run(mut f: Flags) -> int {
                     inc.path,
                     f.silent,
                     f.dry_run,
-                    true,
                     f.keep_going,
                     mut built,
                     "\n",
