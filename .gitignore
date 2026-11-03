@@ -34,3 +34,12 @@ tests/corpus/missing/result
 tests/corpus/phony/prog
 tests/corpus/vars/vars.out
 tests/corpus/wide/t[0-9][0-9]
+tests/corpus/functions-file-io/blank.txt
+tests/corpus/functions-file-io/commas.txt
+tests/corpus/functions-file-io/empty.txt
+tests/corpus/functions-file-io/lazy.txt
+tests/corpus/functions-file-io/newline.txt
+tests/corpus/functions-file-io/out.txt
+tests/corpus/functions-file-io/recipe.txt
+tests/corpus/functions-file-io/result.txt
+tests/corpus/functions-file-io/sp.txt
