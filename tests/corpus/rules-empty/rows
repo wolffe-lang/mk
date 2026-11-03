@@ -1,0 +1,35 @@
+# rules-empty: an empty recipe runs nothing; a goal whose update started no command says so (gmake 4.4.1)
+empty -f empty.mk
+empty-dry -f empty.mk -n
+empty-jobs -f empty.mk -j 2
+empty-silent -f empty.mk -s
+empty-twice -f empty.mk all all
+file-goal -f empty.mk empty.mk
+expands-empty -f expands.mk
+at-only -f expands.mk at
+tab-empty -f expands.mk tab
+tab-empty-dry -f expands.mk tab -n
+tab-empty-jobs -f expands.mk tab -j 2
+phony -f phony.mk
+phony-tab -f phony.mk tab
+phony-twice -f phony.mk twice twice
+phony-jobs -f phony.mk -j 2
+chain -f chain.mk
+chain-jobs -f chain.mk -j 2
+both -f chain.mk both
+goals -f chain.mk a b
+goals-jobs -f chain.mk -j 2 a b
+none -f chain.mk none
+none-jobs -f chain.mk -j 2 none
+prereq-empty -f dep.mk
+prereq-empty-jobs -f dep.mk -j 2
+exists -f dep.mk same
+override-empty -f override.mk
+empty-dry-jobs -f empty.mk -n -j 2
+file-goal-jobs -f empty.mk -j 2 empty.mk
+phony-twice-jobs -f phony.mk -j 2 twice twice
+silent-twice -f phony.mk -s twice twice
+repeat-norecipe -f plain.mk all all
+repeat-norecipe-jobs -f plain.mk -j 2 all all
+keep-going -f keep.mk -k a b
+include-empty -f include.mk
