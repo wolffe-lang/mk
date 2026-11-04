@@ -15,6 +15,7 @@
 - A recipe line inside a conditional (`all:`, `ifeq (a,a)`, `\t@echo yes`, `endif`) is the rule's; mk dropped every recipe line after the directive. A tab line outside a rule is read as gmake reads it: a directive or an assignment as a makefile line, a blank or comment one skipped, any other `*** recipe commences before first target.  Stop.` (mk ignored them, and `\tX = 1` set nothing)
 - A rule or an assignment continued onto a line that starts with a tab (`all: a \` then `\tb`) is one line; mk took the tab line for a recipe line, and `X = a \` then `\tb` gave `a`
 - Whitespace before, between and after the recipe prefixes is skipped, as gmake does: `\t  @echo x` is silent, `\t@ - exit 2` is ignored, `\t   echo x` echoes `echo x`; mk passed `@echo` to the shell
+- The overriding-recipe warnings name each recipe's first line (`Makefile:4:` and `Makefile:2:` for rules on lines 1 and 3), not the rules' lines
 
 ## 0.4.0 (2026-10-30)
 

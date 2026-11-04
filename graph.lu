@@ -70,10 +70,12 @@ fn add_node(
         for p in prereqs {
             (mut merged).push(p)
         }
-        // If both have recipes, the second wins (with warnings)
+        // If both have recipes, the second wins (with warnings that name each
+        // recipe's first line, as gmake does)
         if existing.recipe.len > 0 && recipe.len > 0 {
-            eprint("{makefile}:{line}: warning: overriding recipe for target '{name}'")
-            eprint("{makefile}:{existing.line}: warning: ignoring old recipe for target '{name}'")
+            let old_line = existing.first_recipe_line
+            eprint("{makefile}:{first_recipe_line}: warning: overriding recipe for target '{name}'")
+            eprint("{makefile}:{old_line}: warning: ignoring old recipe for target '{name}'")
             map.set(mut g.nodes, name, Node {
                 name: name,
                 prereqs: merged,
