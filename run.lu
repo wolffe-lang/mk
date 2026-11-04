@@ -102,6 +102,9 @@ fn strip_prefixes(line: str) -> (str, bool, bool, bool) {
         } else if l.starts_with("+") {
             always_run = true
             l = l[1..]
+        } else if l.starts_with(" ") || l.starts_with("\t") {
+            // gmake skips whitespace before, between and after the prefixes
+            l = l[1..]
         } else {
             break
         }

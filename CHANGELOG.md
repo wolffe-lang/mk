@@ -14,6 +14,7 @@
 - A prerequisite that does not exist once its rule has run is newer than its target and is in `$?`, as gmake reads it: `out: FORCE` with `FORCE:` (no recipe, no prerequisites) remakes `out` every time; mk said `'out' is up to date.`, and under `-j` a target with no recipe left its dependents unmade
 - A recipe line inside a conditional (`all:`, `ifeq (a,a)`, `\t@echo yes`, `endif`) is the rule's; mk dropped every recipe line after the directive. A tab line outside a rule is read as gmake reads it: a directive or an assignment as a makefile line, a blank or comment one skipped, any other `*** recipe commences before first target.  Stop.` (mk ignored them, and `\tX = 1` set nothing)
 - A rule or an assignment continued onto a line that starts with a tab (`all: a \` then `\tb`) is one line; mk took the tab line for a recipe line, and `X = a \` then `\tb` gave `a`
+- Whitespace before, between and after the recipe prefixes is skipped, as gmake does: `\t  @echo x` is silent, `\t@ - exit 2` is ignored, `\t   echo x` echoes `echo x`; mk passed `@echo` to the shell
 
 ## 0.4.0 (2026-10-30)
 

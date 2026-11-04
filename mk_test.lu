@@ -1017,3 +1017,18 @@ fn test_missing_prereq_is_newer() {
     assert(newer.len == 2 && newer[0] == ".mk-p31-gone" && newer[1] == "FORCE", "and is in $?")
     assert(!is_out_of_date(g, "FORCE", built), "FORCE itself has nothing to do")
 }
+
+fn test_recipe_lines() {
+    let (l, silent, ignore, _always) = strip_prefixes("  @ - echo x")
+    assert(l == "echo x" && silent && ignore, "whitespace around the prefixes is skipped")
+    assert(tab_line_is_makefile_line("\tX = 1"), "a tab assignment is a makefile line")
+    assert(tab_line_is_makefile_line("\tifeq (a,b)"), "so is a tab directive")
+    assert(!tab_line_is_makefile_line("\techo x"), "a tab command outside a rule is not")
+    var lines = List[str]()
+    (mut lines).push("X = a \\")
+    (mut lines).push("\tb")
+    let joined = join_continuations(lines)
+    assert(joined.len == 1 && joined[0].text == "X = a b", "a tab line continues an assignment")
+    let db = parse_makefile_ok("all:\nifeq (a,a)\n\t@echo yes\nendif\n")
+    assert(db.rules.len == 1 && db.rules[0].recipe.len == 1, "a recipe line inside ifeq is kept")
+}
