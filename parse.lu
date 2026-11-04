@@ -129,8 +129,9 @@ fn join_continuations(lines: List[str]) -> List[Line] {
             i += 1
             continue
         }
-        // Check if this is a recipe line (starts with tab)
-        if line.starts_with("\t") {
+        // Check if this is a recipe line (starts with tab); a tab line that continues
+        // an open non-recipe line (`all: a \` then `\tb`) is part of that line
+        if line.starts_with("\t") && (in_recipe || !in_continuation) {
             // If we were building a non-recipe line, push it.
             // This guard must NOT fire while in_recipe: a recipe line is still being built.
             if !in_recipe && current.len > 0 {

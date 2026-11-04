@@ -13,6 +13,7 @@
 - A goal whose update started no command says what gmake says, under `-n` and `-j` too: `'t' is up to date.` for an empty recipe (mk printed an empty line), `Nothing to be done for 't'.` for a target with no recipe, a phony one or a file with no rule (mk said nothing for a file), and the same again for a goal named twice (mk said `is up to date` even for a target with no recipe, and under `-s`)
 - A prerequisite that does not exist once its rule has run is newer than its target and is in `$?`, as gmake reads it: `out: FORCE` with `FORCE:` (no recipe, no prerequisites) remakes `out` every time; mk said `'out' is up to date.`, and under `-j` a target with no recipe left its dependents unmade
 - A recipe line inside a conditional (`all:`, `ifeq (a,a)`, `\t@echo yes`, `endif`) is the rule's; mk dropped every recipe line after the directive. A tab line outside a rule is read as gmake reads it: a directive or an assignment as a makefile line, a blank or comment one skipped, any other `*** recipe commences before first target.  Stop.` (mk ignored them, and `\tX = 1` set nothing)
+- A rule or an assignment continued onto a line that starts with a tab (`all: a \` then `\tb`) is one line; mk took the tab line for a recipe line, and `X = a \` then `\tb` gave `a`
 
 ## 0.4.0 (2026-10-30)
 
