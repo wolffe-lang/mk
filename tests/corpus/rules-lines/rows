@@ -1,0 +1,21 @@
+# rules-lines: recipe lines inside conditionals and outside a rule, the prefix characters, tab continuations, the warning's line (gmake 4.4.1)
+cond -f cond.mk
+cond-else -f cond.mk else
+cond-nested -f cond.mk nested
+cond-dead -f cond.mk dead
+cond-error -f cond.mk err
+cond-dry -f cond.mk -n
+cond-jobs -f cond.mk -j 2 else
+outside -f outside.mk
+commence -f commence.mk
+commence-after -f after.mk
+commence-call -f call.mk
+commence-include -f include.mk
+space -f space.mk
+space-semi -f space.mk semi
+space-dry -f space.mk -n dry
+space-jobs -f space.mk -j 2
+cont -f cont.mk
+cont-semi -f cont.mk semi
+warn -f warn.mk
+warn-mixed -f warn-mixed.mk a
