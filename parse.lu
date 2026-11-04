@@ -546,6 +546,30 @@ fn parse_define(line: str, line_num: int) -> Define ! {none} {
     }
 }
 
+/// Whether a tab line outside a rule is a makefile line to gmake: a directive or
+/// an assignment. Any other there is `recipe commences before first target`.
+fn tab_line_is_makefile_line(line: str) -> bool {
+    let w = line.trim()
+    if parse_conditional(w).len > 0 {
+        return true
+    }
+    let words = w.words()
+    let first = if words.len > 0 then words[0] else ""
+    if first == "define" || first == "endef" || first == "include" || first == "-include" {
+        return true
+    }
+    if first == "sinclude" || first == "export" || first == "unexport" || first == "override" {
+        return true
+    }
+    if first == "undefine" {
+        return true
+    }
+    let _a = parse_assignment(w, 0) else {
+        return false
+    }
+    true
+}
+
 /// Parse a conditional directive. Returns the kind, or empty if it's not a conditional.
 fn parse_conditional(line: str) -> str {
     if line == "else" {
@@ -796,6 +820,8 @@ fn parse_lines(
     // Process each logical line
     var line_num = 0
     var has_rule = false
+    // After `.PHONY:` or `.EXPORT_ALL_VARIABLES:` a tab line is its ignored recipe
+    var special_rule = false
     var current_rule = Rule {
         targets: List[str](),
         prereqs: List[str](),
@@ -836,10 +862,23 @@ fn parse_lines(
             continue
         }
 
-        // Check for recipe lines (start with tab)
-        if line.starts_with("\t") {
+        // Check for recipe lines (start with tab). One in a branch not taken is
+        // dropped. Outside a rule gmake reads a tab line that is a directive or an
+        // assignment as a makefile line, skips a blank or comment one, and stops at
+        // any other
+        let live = cond_stack.len == 0 || cond_stack[cond_stack.len - 1].live
+        let outside = live && !has_rule && !special_rule
+        if line.starts_with("\t") && !(outside && tab_line_is_makefile_line(line)) {
+            let body = line.trim()
+            if outside && body.len > 0 && !body.starts_with("#") {
+                return Parse(ParseErr {
+                    file: file,
+                    line: line_number,
+                    message: "recipe commences before first target",
+                })
+            }
             // This is a recipe line for the current rule
-            if has_rule {
+            if has_rule && live {
                 // Strip only the first tab (the recipe prefix) from the first line
                 // The joined line may contain newlines from continuations
                 let first_newline = line.find("\n") else {
@@ -884,10 +923,14 @@ fn parse_lines(
             continue
         }
 
-        // If we were in a rule, save it
-        if has_rule {
-            (mut db.rules).push(current_rule)
-            has_rule = false
+        // If we were in a rule, save it: a live line ends it, but a conditional
+        // directive does not, so the recipe lines inside `ifeq … endif` stay its own
+        if live && parse_conditional(stripped).len == 0 {
+            if has_rule {
+                (mut db.rules).push(current_rule)
+                has_rule = false
+            }
+            special_rule = false
         }
 
         // A recipe can follow a `;` on a rule line: the head before it is the line
@@ -902,6 +945,8 @@ fn parse_lines(
                 kind: refusal,
                 line: line_number,
             })
+            // the tab lines after a refused rule are its recipe, not misplaced ones
+            special_rule = true
             line_num += 1
             continue
         }
@@ -1302,6 +1347,7 @@ fn parse_lines(
                                 if stripped == ".EXPORT_ALL_VARIABLES:" ||
                                     stripped == ".EXPORT_ALL_VARIABLES" {
                                     v.export_all = true
+                                    special_rule = true
                                     line_num += 1
                                     continue
                                 }
@@ -1363,6 +1409,7 @@ fn parse_lines(
                             },
                         }
                         (mut db.phonies).push(phony)
+                        special_rule = true
                         line_num += 1
                         continue
                     },
