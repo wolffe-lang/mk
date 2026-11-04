@@ -101,24 +101,51 @@ write when run by hand`, `rows: a recipe after ; on the rule line (red)`, `parse
 says so`, `rows: a target with neither recipe nor prerequisites is newer (red)`, `graph: a missing prerequisite is newer
 than its target`.
 
-### P3.2 — recipe lines: `.RECIPEPREFIX`, the prefix characters, a tab continuation, the warning's line
+### P3.2 — recipe lines: inside a conditional, outside a rule, the prefix characters, a tab continuation, the warning's line
 
-- `.RECIPEPREFIX = >`: from the next line on, a line that starts with `>` is a recipe line, and a tab line is not (gmake:
-  `Makefile:3: *** missing separator.  Stop.` for a tab recipe under `>`). An empty value restores the tab. The prefix is
-  read line by line, so `join_continuations` cannot decide recipe lines by the tab alone: it gets the prefix in effect
-  (a `.RECIPEPREFIX` assignment it sees on a logical line changes it) and treats a prefix line as it treats a tab line
-  today, comments and continuations included. `parse_lines`' tab test (parse.lu:795) follows. `$(eval)` text starts from
-  the current value.
-- Whitespace after the recipe prefix and between `@`, `-` and `+` is skipped: `\t  @echo x` is silent, `\t -@exit 1` is
-  ignored, `\t@  echo x` under `-n` prints `echo x` (`strip_prefixes`, run.lu:90).
-- A rule line continued onto a line that starts with a tab (`all: a \` then `\tb`) is one rule line, prerequisites `a b`.
-  `join_continuations` takes the tab line for a recipe today (parse.lu:133 tests the tab before the open continuation).
-- The overriding-recipe warning names the first recipe line of each rule (`add_node`, graph.lu:75–76: `line` →
-  `first_recipe_line`): gmake's `Makefile:4:`/`Makefile:2:` for rules on lines 1 and 3. The included file's name and the
-  moment are P3.3's.
-Rows `rules-prefix/`; commits `rows: .RECIPEPREFIX, the prefix characters, a tab continuation (red)`, `parse: .RECIPEPREFIX
-and a tab-continued rule line`, `run: whitespace around the recipe prefix characters`, `graph: the overriding warning names
-the recipe's first line`.
+`sessions/P3.2-recipe-lines.md`, 36 steps with three restart points, rehearsed and replayed, sized for the `:8002` context
+(about 30k tokens). Measuring it found a worse defect than the ones planned: mk ends a rule at **any** non-recipe line,
+so a recipe line inside a conditional is silently dropped. `all:`, `ifeq (a,a)`, `\t@echo yes`, `endif` prints `yes` in
+gmake and `mk: Nothing to be done for 'all'.` in mk, and the same holds under `-n` and `-j`. `.RECIPEPREFIX` moves to
+P3.2b to make room for it.
+- Only a live line other than a conditional directive ends a rule; a recipe line in a branch not taken is dropped, and
+  so is a line in a dead branch, which ends nothing (`dead:`, `ifeq (a,b)`, `X = 1`, `endif`, `\t@echo after-dead`).
+- A tab line outside a rule: gmake reads a directive or an assignment as a makefile line (`\tX = 1` before the first
+  target sets `X`), skips a blank or comment one, and stops at any other with `FILE:N: *** recipe commences before first
+  target.  Stop.`, also after an assignment that ends a rule, after `define … endef`, `include`, `export` or a top-level
+  `$(info)`, and in an included file. This is P2.7b's "a tab line before the first target is silently ignored". After
+  `.PHONY:`, `.EXPORT_ALL_VARIABLES:` or a refused rule, a tab line is that rule's ignored recipe (`special_rule`).
+- A rule or assignment line continued onto a tab line is one line (`X = a \` then `\tb` was `a`, silently).
+- Whitespace before, between and after `@`, `-`, `+` is skipped (`\t@ - exit 2` is ignored; `\t\t@echo x` is silent).
+- The overriding warnings name each recipe's first line; the included file's name and the moment stay P3.3's.
+Rows `rules-lines/` (20). End: 93 unit tests, `Results: 423 passed, 0 failed (expected: 423)`, warnings 0. Five commits:
+`rows: recipe lines (red)`, `parse: recipe lines inside a conditional; a tab line outside a rule`, `parse: a rule or
+assignment line continued onto a tab line`, `run: whitespace around the recipe prefix characters`, `graph: the
+overriding warning names the recipe's first line`.
+
+### P3.2b — `.RECIPEPREFIX`
+
+Measured on gmake 4.4.1. `.RECIPEPREFIX = >` makes a `>` line a recipe line from the next line on, and a tab line an
+ordinary one: `\t@echo tab` is `Makefile:3: *** missing separator.  Stop.`, `\tfoo: ; @echo foo` is a rule, `\tX = 1`
+an assignment. Only the first character counts (`>>` is `>`), and an empty value restores the tab. A `#` in a prefix line
+is recipe text. A continuation line drops one leading prefix character, as with a tab (`-n` prints `echo one \` and
+`two`). A prefix line before any rule is `recipe commences before first target`. `override` and `:=` work. The value is
+read raw: `.RECIPEPREFIX = $(P)` with `P = >` makes `$` the prefix, so `>@echo` is `missing separator`. A
+`.RECIPEPREFIX` in a branch not taken changes nothing. One set in an included file holds for the including file's later
+lines. `$(eval)` text and an included file start from the current value.
+
+The design problem is that `join_continuations` decides recipe lines, comments and continuations for a whole file
+before `parse_lines` evaluates anything, while the prefix can change mid-file: in a conditional, from an include, from
+`$(eval)`. The proposal:
+- `join_continuations(lines, prefix)` starts from the variable's current first character (`parse_makefile`, `eval_text`).
+- It follows the `.RECIPEPREFIX` assignments it sees outside `if…endif` and `define…endef` blocks.
+- It turns a prefix line into a tab line, so `parse_lines` stays as it is, and a non-prefix tab line into an untabbed one.
+- It records the prefix each logical line was joined with (`Line.prefix`).
+- `parse_lines` refuses by name when the variable's first character differs from the line's recorded prefix: a
+  `.RECIPEPREFIX` set in a taken branch, in an included file, by `$(eval)`, or with `:=` and a reference. mk is then never
+  silently wrong.
+
+Rows `rules-prefix/`; commits `rows: .RECIPEPREFIX (red)`, `parse: .RECIPEPREFIX`.
 
 ### P3.3 — rule lines are read when they are read
 
@@ -130,7 +157,10 @@ about `$(eval)` goes). `build_graph` then only merges. `X := 1`, `t: $(X)`, `X :
 variable starts the recipe (`SEMI := ;`, `all: a $(SEMI) echo x` prints `echo x` and `x`). `Rule` gains `file`, so an
 included rule is reported with its own file name (`inc.mk:2: warning: ignoring old recipe for target 'all'`). The two
 warnings are printed when the overriding rule is complete, before the lines after it are read, so before a later
-`$(info …)`. Paste the probe `override-warn-info` from gmake: `read line 3`, the two warnings, `read line 6`, `second`. Rows
+`$(info …)`. Paste the probe `override-warn-info` from gmake: `read line 3`, the two warnings, `read line 6`, `second`. After
+P3.2 the warnings' lines are right and only the file is wrong (`Makefile:2:` where gmake says `inc.mk:2:`). The lists are
+expanded where `parse_rule` reads the rule line; the warnings belong where P3.2's `parse_lines` ends a rule (a live line
+other than a conditional directive), since the recipe is complete only there. Rows
 `rules-read/`; commits `rows: rule lines read when read (red)`, `parse: targets and prerequisites expanded when the rule
 is read`, `parse: the overriding warnings when the rule is read, with its file`.
 
@@ -218,3 +248,10 @@ rewritten with existing prerequisites) and their own rules matrix.
 - Under `-j`, a goal whose prerequisite ran a command for an earlier goal is not reported (`a: x ; @echo a`, `b: x ;`,
   `x: ; @echo x`, `-j 2 a b`): gmake prints `x`, `mk: 'b' is up to date.`, `a`; mk prints `x`, `a`. The serial build
   matches gmake (P3.1's `ran` map is per target; gmake counts per goal).
+
+### Found by P3.2's author (2026-11-03), measured on gmake 4.4.1, not fixed (no rows yet)
+- `export`, `override` and `undefine` lines in a branch not taken are executed. `ifeq (a,b)`, `export X = 1`, `endif` gives
+  `[1] [1]` for `[$$X] [$(X)]` (gmake `[] []`), a dead `override X = changed` wins (`[changed]`, gmake `[keep]`), and a dead
+  `undefine X` undefines it. `parse_lines` handles these directives before its liveness check (a dead `define` is dropped
+  correctly). This is track 01's conditionals, a small session of its own.
+- `.RECIPEPREFIX` is P3.2b, above.
