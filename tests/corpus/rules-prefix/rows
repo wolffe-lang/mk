@@ -1,0 +1,19 @@
+# rules-prefix: .RECIPEPREFIX, a recipe line's first character (gmake 4.4.1)
+basic -f prefix.mk
+dry -f prefix.mk -n dry
+error -f prefix.mk err
+jobs -f prefix.mk -j 2
+tab -f tab.mk
+tab-rule -f tab.mk foo
+tab-recipe -f under.mk
+reset -f reset.mk
+outside -f outside.mk
+commence -f commence.mk
+semi -f semi.mk
+semi-dry -f semi.mk -n cont
+include -f incl.mk all
+eval -f eval.mk
+cond -f cond.mk
+raw -f raw.mk
+warn -f warn.mk
+cli -f cli.mk .RECIPEPREFIX=>
