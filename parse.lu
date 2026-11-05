@@ -317,6 +317,13 @@ fn recipe_prefix(v: Vars) -> str {
     prefix_char(var_value(v, ".RECIPEPREFIX"))
 }
 
+/// The refusal of a line read after a `.RECIPEPREFIX` join_continuations could
+/// not follow.
+fn prefix_refusal(file: str, line: int) -> str {
+    let how = "set in a conditional, an included file, $(eval) or from a reference"
+    "mk: {file}:{line}: .RECIPEPREFIX {how} is not supported"
+}
+
 /// Strip a `#` comment from a line (not inside a recipe).
 /// A `\#` is an escaped `#` and is not a comment start.
 fn strip_comment(line: str) -> str {
@@ -938,6 +945,12 @@ fn parse_lines(
         merge_evaluated(mut db, mut v)
         let line = logical_lines[line_num].text
         let line_number = logical_lines[line_num].line
+        // join_continuations read the line with the prefix it followed; when the
+        // variable no longer agrees, mk would read the line wrong, and refuses it
+        if logical_lines[line_num].prefix != recipe_prefix(v) {
+            eprint(prefix_refusal(file, line_number))
+            return parse
+        }
         // Inside a define every non-blank line is body text, recipe lines and
         // directives included, until the endef that closes it
         let word = line.trim()

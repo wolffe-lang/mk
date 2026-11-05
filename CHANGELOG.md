@@ -7,6 +7,7 @@
 - A recipe after `;` on the rule line (`all: dep ; @echo $<`): the text after the `;` is the rule's first recipe line, its leading whitespace dropped; a `#` in it is recipe text, not a comment, and a backslash-newline in it stays for the shell. A `;` in a value (`X = a ; b`) or in a comment (`t: p # c ; d`) is not a recipe
 - An empty recipe (`t: ;`, or recipe lines that expand to nothing) runs nothing and prints nothing, and the target counts as remade
 - `.RECIPEPREFIX`: after `.RECIPEPREFIX = >` a line that starts with `>` is a recipe line and a tab line an ordinary one (`\tX = 1` sets `X`); only the first character counts, and an empty value is a tab. A `#` in a prefix line is recipe text, a continued recipe line drops one `>`, and outside a rule a prefix line is read as written (`>X = 1` sets `>X`). The value is read unexpanded (`= $(P)` makes `$` the prefix); an included file and `$(eval)` text start from the current one
+- A `.RECIPEPREFIX` mk cannot follow ahead of reading (in a conditional, an included file or `$(eval)`, from a reference, by `define`, `undefine` or `?=`, against a command-line value) is refused by name at the next line read
 
 ### Fixed
 

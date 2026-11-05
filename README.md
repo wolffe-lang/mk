@@ -96,6 +96,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [-e] [NAME=VA
 | `.SUFFIXES` | `.SUFFIXES is not supported` |
 | `|` order-only prerequisites | `order-only prerequisites are not supported` |
 | `::` double-colon rules | `double-colon rules are not supported` |
+| `.RECIPEPREFIX` set where mk cannot follow it (a conditional, an included file, `$(eval)`, a reference, `define`, `undefine`, `?=`, a command-line value) | `.RECIPEPREFIX set in a conditional, an included file, $(eval) or from a reference is not supported` (at the next line read) |
 
 ## Out-of-date rule
 

@@ -1051,4 +1051,6 @@ fn test_recipe_prefix() {
     assert(prefix_char(">>") == ">" && prefix_char("") == "\t", "the first character, or a tab")
     let db = parse_makefile_ok(".RECIPEPREFIX = >\nall:\n>@echo hi\n")
     assert(db.rules.len == 1 && db.rules[0].recipe[0] == "@echo hi", "its recipe line")
+    let refused = parse_makefile_ok("ifeq (a,a)\n.RECIPEPREFIX = >\nendif\nall: ; @:\n")
+    assert(refused.rules.len == 0, "a .RECIPEPREFIX set in a conditional is refused")
 }
