@@ -6,6 +6,7 @@
 
 - A recipe after `;` on the rule line (`all: dep ; @echo $<`): the text after the `;` is the rule's first recipe line, its leading whitespace dropped; a `#` in it is recipe text, not a comment, and a backslash-newline in it stays for the shell. A `;` in a value (`X = a ; b`) or in a comment (`t: p # c ; d`) is not a recipe
 - An empty recipe (`t: ;`, or recipe lines that expand to nothing) runs nothing and prints nothing, and the target counts as remade
+- `.RECIPEPREFIX`: after `.RECIPEPREFIX = >` a line that starts with `>` is a recipe line and a tab line an ordinary one (`\tX = 1` sets `X`); only the first character counts, and an empty value is a tab. A `#` in a prefix line is recipe text, a continued recipe line drops one `>`, and outside a rule a prefix line is read as written (`>X = 1` sets `>X`). The value is read unexpanded (`= $(P)` makes `$` the prefix); an included file and `$(eval)` text start from the current one
 
 ### Fixed
 
@@ -16,6 +17,7 @@
 - A rule or an assignment continued onto a line that starts with a tab (`all: a \` then `\tb`) is one line; mk took the tab line for a recipe line, and `X = a \` then `\tb` gave `a`
 - Whitespace before, between and after the recipe prefixes is skipped, as gmake does: `\t  @echo x` is silent, `\t@ - exit 2` is ignored, `\t   echo x` echoes `echo x`; mk passed `@echo` to the shell
 - The overriding-recipe warnings name each recipe's first line (`Makefile:4:` and `Makefile:2:` for rules on lines 1 and 3), not the rules' lines
+- A tab line outside a rule that is read as a makefile line is joined and stripped as one: `\tW = a \` then `\t    b` is `a b`, and `\tZ = 3# c` is `3` (mk kept the backslash-newline and the comment)
 
 ## 0.4.0 (2026-10-30)
 

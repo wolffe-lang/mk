@@ -49,7 +49,7 @@ fn test_join_continuations_basic() {
     (mut lines).push("a \\")
     (mut lines).push("b \\")
     (mut lines).push("c")
-    let result = join_continuations(lines)
+    let result = join_continuations(lines, "\t")
     assert(result.len == 1, "expected 1 line")
     assert(result[0].text == "a b c", "expected joined line")
 }
@@ -59,7 +59,7 @@ fn test_join_continuations_none() {
     (mut lines).push("a")
     (mut lines).push("b")
     (mut lines).push("c")
-    let result = join_continuations(lines)
+    let result = join_continuations(lines, "\t")
     assert(result.len == 3, "expected 3 lines")
 }
 
@@ -67,7 +67,7 @@ fn test_join_continuations_trailing() {
     let lines = List[str]()
     (mut lines).push("a \\")
     (mut lines).push("b")
-    let result = join_continuations(lines)
+    let result = join_continuations(lines, "\t")
     assert(result.len == 1, "expected 1 line")
     assert(result[0].text == "a b", "expected joined line")
 }
@@ -1027,8 +1027,28 @@ fn test_recipe_lines() {
     var lines = List[str]()
     (mut lines).push("X = a \\")
     (mut lines).push("\tb")
-    let joined = join_continuations(lines)
+    let joined = join_continuations(lines, "\t")
     assert(joined.len == 1 && joined[0].text == "X = a b", "a tab line continues an assignment")
     let db = parse_makefile_ok("all:\nifeq (a,a)\n\t@echo yes\nendif\n")
     assert(db.rules.len == 1 && db.rules[0].recipe.len == 1, "a recipe line inside ifeq is kept")
+}
+
+fn test_recipe_prefix() {
+    var lines = List[str]()
+    (mut lines).push(".RECIPEPREFIX = >")
+    (mut lines).push("all:")
+    (mut lines).push(">@echo a # kept")
+    (mut lines).push("\tX = 1")
+    (mut lines).push("ifeq (a,a)")
+    (mut lines).push(".RECIPEPREFIX =")
+    (mut lines).push("endif")
+    let joined = join_continuations(lines, "\t")
+    assert(joined.len == 7 && joined[0].prefix == "\t", "seven lines, the first under a tab")
+    assert(joined[1].prefix == ">", "the prefix changes after its line")
+    assert(joined[2].text == "\t@echo a # kept", "a prefix line is a tab line")
+    assert(joined[3].text == "X = 1", "a tab line is an ordinary line")
+    assert(joined[6].prefix == ">", "one in a conditional is the reader's to check")
+    assert(prefix_char(">>") == ">" && prefix_char("") == "\t", "the first character, or a tab")
+    let db = parse_makefile_ok(".RECIPEPREFIX = >\nall:\n>@echo hi\n")
+    assert(db.rules.len == 1 && db.rules[0].recipe[0] == "@echo hi", "its recipe line")
 }

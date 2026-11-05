@@ -50,6 +50,7 @@ Usage: mk [-f FILE] [-C DIR] [-n] [-s] [-k] [-j [N]] [-p] [-I DIR] [-e] [NAME=VA
 |---|---|
 | rules | `all: prog` |
 | recipes | `\t$(CC) -o $@ $^` (tab-prefixed) |
+| `.RECIPEPREFIX` | `.RECIPEPREFIX = >` then `>@echo hi` (the value's first character starts a recipe line; a tab line is then an ordinary one) |
 | a recipe on the rule line | `all: dep ; @echo $<` (the text after `;` is the first recipe line; a `#` in it is not a comment) |
 | empty recipe | `t: ;` (runs nothing; as a goal, `'t' is up to date.`) |
 | variables (recursive) | `CFLAGS = -O2` |

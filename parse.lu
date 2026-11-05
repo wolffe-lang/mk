@@ -69,10 +69,12 @@ struct ParseErr {
     message: str,
 }
 
-/// A logical line with its first physical line number.
+/// A logical line with its first physical line number and the recipe prefix it
+/// was read with (`.RECIPEPREFIX`'s first character; a tab when it is empty)
 struct Line {
     text: str,
     line: int,
+    prefix: str,
 }
 
 /// An included file with its path and whether it was found.
@@ -100,28 +102,38 @@ struct Database {
 /// A `#` ends the line.
 /// Recipe lines (tab-prefixed) are joined with continuations, preserving raw text.
 /// Returns lines with their first physical line number.
-fn join_continuations(lines: List[str]) -> List[Line] {
+/// A recipe line starts with the recipe prefix, `start` at first, then what the
+/// `.RECIPEPREFIX` lines outside conditionals and define bodies make it: a prefix
+/// line is returned as a tab line, a tab line as an ordinary one, and every line
+/// records its prefix for the reader to check.
+fn join_continuations(lines: List[str], start: str) -> List[Line] {
     var result = List[Line]()
     var current = ""
     var current_line = 0
     var in_continuation = false
     var in_recipe = false
+    var prefix = start
+    var if_depth = 0
+    var define_depth = 0
     var i = 0
     while i < lines.len {
-        let line = lines[i]
+        // A define body is read as it was before `.RECIPEPREFIX`
+        let p = if define_depth > 0 then "\t" else prefix
+        let line = prefixed_line(lines[i], p, in_continuation)
         // While in a recipe continuation, accept the line regardless of its first character.
         // A recipe continuation may be indented with spaces, not just tabs.
         if in_recipe && in_continuation {
             // Append with newline — the raw text is stored for the shell.
-            // Drop exactly one leading tab from the continued physical line
-            // (gmake strips the tab that follows each backslash-newline in a recipe).
-            let cont = if line.starts_with("\t") { line[1..] } else { line }
+            // Under a tab drop exactly one leading tab from the continued physical line
+            // (gmake strips the one that follows each backslash-newline in a recipe);
+            // the reader drops another prefix, once it knows the line is a recipe line
+            let cont = if p == "\t" && line.starts_with("\t") { line[1..] } else { line }
             current = current + "\n" + cont
             // Check for trailing backslash
             if current.ends_with("\\") {
                 in_continuation = true
             } else {
-                (mut result).push(Line { text: current, line: current_line })
+                (mut result).push(Line { text: current, line: current_line, prefix: prefix })
                 current = ""
                 in_continuation = false
                 in_recipe = false
@@ -135,7 +147,7 @@ fn join_continuations(lines: List[str]) -> List[Line] {
             // If we were building a non-recipe line, push it.
             // This guard must NOT fire while in_recipe: a recipe line is still being built.
             if !in_recipe && current.len > 0 {
-                (mut result).push(Line { text: current, line: current_line })
+                (mut result).push(Line { text: current, line: current_line, prefix: prefix })
                 current = ""
                 in_continuation = false
             }
@@ -147,7 +159,7 @@ fn join_continuations(lines: List[str]) -> List[Line] {
             } else {
                 // New recipe line
                 if current.len > 0 {
-                    (mut result).push(Line { text: current, line: current_line })
+                    (mut result).push(Line { text: current, line: current_line, prefix: prefix })
                 }
                 current = line
                 current_line = i + 1
@@ -157,7 +169,7 @@ fn join_continuations(lines: List[str]) -> List[Line] {
             if current.ends_with("\\") {
                 in_continuation = true
             } else {
-                (mut result).push(Line { text: current, line: current_line })
+                (mut result).push(Line { text: current, line: current_line, prefix: prefix })
                 current = ""
                 in_continuation = false
                 in_recipe = false
@@ -169,7 +181,7 @@ fn join_continuations(lines: List[str]) -> List[Line] {
         if in_recipe {
             // End of recipe block
             if current.len > 0 {
-                (mut result).push(Line { text: current, line: current_line })
+                (mut result).push(Line { text: current, line: current_line, prefix: prefix })
                 current = ""
                 in_recipe = false
                 in_continuation = false
@@ -199,10 +211,28 @@ fn join_continuations(lines: List[str]) -> List[Line] {
         } else {
             // Strip comments from non-recipe lines
             let stripped = strip_comment(current)
-            (mut result).push(Line { text: stripped, line: current_line })
+            (mut result).push(Line { text: stripped, line: current_line, prefix: prefix })
             current = ""
             in_continuation = false
             i += 1
+            // Follow `.RECIPEPREFIX` outside conditionals and define bodies
+            let w = stripped.trim()
+            let opens = w.starts_with("define ") || w.starts_with("override define ")
+            if define_depth > 0 {
+                if opens {
+                    define_depth += 1
+                } else if w == "endef" {
+                    define_depth -= 1
+                }
+            } else if opens {
+                define_depth = 1
+            } else if parse_conditional(w).starts_with("if") {
+                if_depth += 1
+            } else if parse_conditional(w) == "endif" && if_depth > 0 {
+                if_depth -= 1
+            } else if if_depth == 0 {
+                prefix = prefix_after(w, prefix)
+            }
         }
     }
     // If the file ends with a continuation, push what we have
@@ -211,13 +241,80 @@ fn join_continuations(lines: List[str]) -> List[Line] {
             // A recipe whose last line ends in a backslash at end of file continues
             // onto an empty line, as gmake reads it.
             let text = if in_continuation { current + "\n" } else { current }
-            (mut result).push(Line { text: text, line: current_line })
+            (mut result).push(Line { text: text, line: current_line, prefix: prefix })
         } else {
             let stripped = strip_comment(current)
-            (mut result).push(Line { text: stripped, line: current_line })
+            (mut result).push(Line { text: stripped, line: current_line, prefix: prefix })
         }
     }
     return result
+}
+
+/// A physical line as the reader reads it under the recipe prefix `p`: one that
+/// starts a logical line with `p` is a tab line, and a tab line that does not
+/// start with `p` is an ordinary one. Under a tab, or continued, it is as written.
+fn prefixed_line(raw: str, p: str, continued: bool) -> str {
+    if p == "\t" || continued {
+        return raw
+    }
+    if raw.starts_with(p) {
+        return "\t" + raw[p.len..]
+    }
+    if raw.starts_with("\t") {
+        return raw.trim_start()
+    }
+    raw
+}
+
+/// A recipe-style logical line read as a makefile line: each backslash-newline,
+/// with the whitespace around it, is one space, as join_continuations joins one.
+fn joined_line(text: str) -> str {
+    let parts = text.split("\n")
+    var out = parts[0]
+    var k = 1
+    while k < parts.len {
+        out = out[0..out.len - 1].trim_end() + " " + parts[k].trim_start()
+        k += 1
+    }
+    out
+}
+
+/// The recipe prefix after the line `w`, read outside conditionals and define
+/// bodies: `.RECIPEPREFIX = V` or `:= V` (`override` and `export` too) makes it
+/// V's first character. Any other change is the reader's to refuse.
+fn prefix_after(w: str, prefix: str) -> str {
+    var rest = w
+    if rest.starts_with("override ") {
+        rest = rest[9..].trim_start()
+    }
+    if rest.starts_with("export ") {
+        rest = rest[7..].trim_start()
+    }
+    let a = parse_assignment(rest, 0) else {
+        return prefix
+    }
+    if a.name == ".RECIPEPREFIX" && (a.op == "=" || a.op == ":=") {
+        return prefix_char(a.value)
+    }
+    prefix
+}
+
+/// A recipe prefix: the first character of `value`, a tab when it is empty.
+fn prefix_char(value: str) -> str {
+    var n = 1
+    while n <= value.len {
+        let c = value.get(0..n) else ""
+        if c.len > 0 {
+            return c
+        }
+        n += 1
+    }
+    "\t"
+}
+
+/// The recipe prefix `.RECIPEPREFIX` gives now.
+fn recipe_prefix(v: Vars) -> str {
+    prefix_char(var_value(v, ".RECIPEPREFIX"))
 }
 
 /// Strip a `#` comment from a line (not inside a recipe).
@@ -782,7 +879,7 @@ fn parse_makefile(
     v.env_names = copy env_names
     v.env_wins = env_wins
     v.reading = true
-    let logical_lines = join_continuations(text.lines())
+    let logical_lines = join_continuations(text.lines(), recipe_prefix(v))
     // An open conditional is reported on the line after the last one
     var end_line = 1
     if logical_lines.len > 0 {
@@ -869,8 +966,13 @@ fn parse_lines(
         // any other
         let live = cond_stack.len == 0 || cond_stack[cond_stack.len - 1].live
         let outside = live && !has_rule && !special_rule
-        if line.starts_with("\t") && !(outside && tab_line_is_makefile_line(line)) {
-            let body = line.trim()
+        // Outside a rule a recipe line is read as written (`>X = 1` sets `>X`); in a
+        // rule a prefix other than a tab is dropped from each continued line
+        let pfx = logical_lines[line_num].prefix
+        let written = if line.starts_with("\t") && pfx != "\t" then pfx + line[1..] else line
+        let line = if pfx != "\t" then line.replace("\n" + pfx, "\n") else line
+        if line.starts_with("\t") && !(outside && tab_line_is_makefile_line(written)) {
+            let body = written.trim()
             if outside && body.len > 0 && !body.starts_with("#") {
                 return Parse(ParseErr {
                     file: file,
@@ -915,7 +1017,9 @@ fn parse_lines(
             continue
         }
 
-        // For non-recipe lines, trim (comments already stripped by join_continuations)
+        // A tab line read as a makefile line is joined and loses its comment here;
+        // join_continuations did the others'
+        let line = if line.starts_with("\t") then strip_comment(joined_line(written)) else line
         let stripped = line.trim()
 
         // Skip empty lines
@@ -1662,8 +1766,8 @@ fn eval_text(mut v: Vars, text: str, line: int) -> () ! {
     Refuse(int, str),
 } {
     var lines = List[Line]()
-    for l in join_continuations(text.lines()) {
-        (mut lines).push(Line { text: l.text, line: line })
+    for l in join_continuations(text.lines(), recipe_prefix(v)) {
+        (mut lines).push(Line { text: l.text, line: line, prefix: l.prefix })
     }
     let cli = copy v.cli_names
     let envs = copy v.env_names
