@@ -193,3 +193,5 @@ Machine: Apple M5 Pro, macOS, wolf 0.2.34. Date: 2026-10-23.
 | `.gitignore` | Ignore build artifacts and corpus outputs |
 | `prompts/` | The prompts that built mk |
 | `tests/corpus/` | Self-contained Makefiles with source files |
+
+A planted line for the public-text check: qz97.
