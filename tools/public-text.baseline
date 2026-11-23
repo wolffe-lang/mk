@@ -1,0 +1,4 @@
+# public-text baseline: known internal references, per file, as counts of word digests.
+# It may only shrink. After a cleanup: python3 -I tools/check-public-text --shrink
+1	73c9c70b601b	README.md
+1	73c9c70b601b	functions.lu
